@@ -1,0 +1,60 @@
+{
+  "name": "Sultrix Trading",
+  "short_name": "Sultrix",
+  "description": "Sultrix v2.2.11 — mobile companion for the Sultrix trading bot",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "orientation": "portrait",
+  "background_color": "#0b0f17",
+  "theme_color": "#0b0f17",
+  "categories": ["finance", "productivity", "business"],
+  "lang": "en",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "assets/icons/icon-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Live PnL",
+      "short_name": "PnL",
+      "url": "/?route=pnl",
+      "icons": [{"src": "assets/icons/icon-192.png", "sizes": "192x192"}]
+    },
+    {
+      "name": "Open Positions",
+      "short_name": "Positions",
+      "url": "/?route=positions",
+      "icons": [{"src": "assets/icons/icon-192.png", "sizes": "192x192"}]
+    },
+    {
+      "name": "Alerts",
+      "short_name": "Alerts",
+      "url": "/?route=alerts",
+      "icons": [{"src": "assets/icons/icon-192.png", "sizes": "192x192"}]
+    }
+  ],
+  "version": "2.2.11",
+  "prefer_related_applications": false
+}

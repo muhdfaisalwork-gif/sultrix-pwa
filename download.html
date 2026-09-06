@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sultrix — Download</title>
+<style>
+  :root { --bg:#0b0f17; --card:#10151f; --line:#1c2532; --text:#e7ecf2; --dim:#7a8597; --blue:#3a8bff; --green:#39d97a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 0; font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 40px 20px; }
+  h1 { font-size: 32px; margin: 0 0 8px; }
+  .sub { color: var(--dim); font-size: 15px; margin: 0 0 32px; }
+  .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  @media (min-width: 720px) { .grid { grid-template-columns: 1fr 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 24px; }
+  .card.featured { border-color: var(--blue); }
+  .card h2 { margin: 0 0 6px; font-size: 20px; }
+  .card .ver { color: var(--dim); font-size: 13px; margin: 0 0 12px; }
+  .card ul { padding-left: 18px; margin: 8px 0 16px; color: var(--dim); font-size: 14px; line-height: 1.7; }
+  .btn { display: inline-block; padding: 10px 20px; background: var(--blue); color: #fff; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; }
+  .btn.secondary { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  .btn:hover { opacity: 0.9; }
+  .platform-icon { display: inline-block; font-size: 22px; margin-right: 8px; vertical-align: middle; }
+  .top-bar { display: flex; justify-content: space-between; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--line); margin-bottom: 32px; }
+  .top-bar a { color: var(--dim); text-decoration: none; font-size: 14px; margin-left: 20px; }
+  .top-bar a:hover { color: var(--text); }
+  .brand { font-weight: 700; letter-spacing: 0.5px; }
+  .meta { display: flex; gap: 16px; font-size: 12px; color: var(--dim); margin-top: 12px; }
+  .ver-pill { display: inline-block; padding: 3px 10px; background: var(--blue); color: #fff; border-radius: 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; margin-left: 6px; vertical-align: middle; }
+  .pwa-cta { background: linear-gradient(135deg, #1a3a6a 0%, #102540 100%); border-color: #2a5a8a; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top-bar">
+    <span class="brand">SULTRIX</span>
+    <div>
+      <a href="/">Home</a>
+      <a href="/app">App</a>
+      <a href="/pricing">Pricing</a>
+      <a href="/support">Support</a>
+    </div>
+  </div>
+
+  <h1>Download Sultrix</h1>
+  <p class="sub">One bot, three surfaces. Pick the one that fits.</p>
+
+  <div class="grid">
+    <div class="card pwa-cta featured">
+      <h2><span class="platform-icon">📱</span>Sultrix Web App <span class="ver-pill">FREE</span></h2>
+      <p class="ver">No install needed. Runs in any browser. Installs on your phone like a real app.</p>
+      <ul>
+        <li>Live PnL, positions, market intelligence</li>
+        <li>TradingView charts (Crypto, Forex, Stocks)</li>
+        <li>Agent status, alerts, push notifications</li>
+        <li>Free trial — no license required</li>
+        <li>Works on iPhone, Android, desktop</li>
+      </ul>
+      <a class="btn" href="https://app.sultrixtrade.com" id="pwaLink">Open Web App →</a>
+      <p class="meta" id="pwaMeta">Requires HTTPS · installable on iOS &amp; Android</p>
+    </div>
+
+    <div class="card">
+      <h2><span class="platform-icon">🖥️</span>Sultrix Desktop</h2>
+      <p class="ver">Full trading engine. Includes WhatsApp + browser. Auto-updates.</p>
+      <ul>
+        <li>Windows installer (1.2 GB) with auto-update</li>
+        <li>Full local execution, no cloud dependency</li>
+        <li>WhatsApp alerts + web push</li>
+        <li>Live trading: Crypto, Forex (MT5), Stocks</li>
+        <li>Free trial included · upgrade to Ultra for AI features</li>
+      </ul>
+      <a class="btn" href="https://github.com/muhdfaisalwork-gif/sultrix-releases/releases/latest/download/Sultrix-Setup.exe" id="winLink">Download for Windows</a>
+      <p class="meta" id="winMeta">Sultrix-Setup.exe · ~250 MB · Windows 10/11</p>
+      <p class="meta" style="margin-top: 8px"><a class="btn secondary" href="https://github.com/muhdfaisalwork-gif/sultrix-releases/releases" style="font-size:12px; padding:6px 12px">All releases (Linux .AppImage, macOS .dmg, .exe)</a></p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top: 32px">
+    <h2>Auto-update</h2>
+    <p class="ver">The desktop app checks for updates automatically. You can also trigger it manually from the launcher's "Updates" tab.</p>
+    <p style="color: var(--dim); font-size: 14px; line-height: 1.7">
+      On launch, the app compares your installed version with the latest release. If a newer version is published, you get a notification with a one-click "Download &amp; Install" button. The download is verified via SHA-256 before running.
+    </p>
+    <ul>
+      <li>Updates are pulled from GitHub Releases (primary) and Cloudflare R2 (CDN mirror)</li>
+      <li>SHA-256 checksum verified before install</li>
+      <li>Mandatory updates (rare, security-critical) auto-block until user accepts</li>
+      <li>Manual check available any time via the launcher's "↻ Updates" tab</li>
+    </ul>
+  </div>
+
+  <div class="card" style="margin-top: 16px">
+    <h2>Need help?</h2>
+    <p style="color: var(--dim); font-size: 14px">
+      WhatsApp: +92-XXX-XXXXXXX · Email: support@sultrixtrade.com · Discord: <a href="#" style="color: var(--blue)">discord.gg/sultrix</a>
+    </p>
+  </div>
+</div>
+</body>
+</html>
+

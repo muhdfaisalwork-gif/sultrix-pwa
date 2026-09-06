@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0b0f17">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Sultrix">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
+  <link rel="stylesheet" href="/styles.css">
+  <!--
+    sultrix-api-base: dashboard origin for /api/pwa/*. Leave empty to use
+    a same-origin relative URL (correct when this PWA is served from the
+    Sultrix desktop app at http://localhost:5000/pwa/ or from a Cloudflare
+    tunnel). When this PWA is opened from a public host like
+    app.sultrixtrade.com, leave the meta empty and the login screen will
+    detect no backend and show "Install the desktop app".
+  -->
+  <meta name="sultrix-api-base" content="">
+  <title>Sultrix — Live Mobile Trading Companion</title>
+</head>
+<body>
+  <!-- Connection banner (controlled via JS) -->
+  <div id="banner" class="banner" hidden></div>
+  <!-- Public-host banner: shown only when on app.sultrixtrade.com / github.io, hidden on localhost. -->
+  <div id="publicHostBanner" class="public-host-banner" hidden style="background:linear-gradient(90deg, rgba(0,229,195,0.12), rgba(124,92,255,0.10));border-bottom:1px solid rgba(0,229,195,0.3);padding:8px 14px;text-align:center;font-size:12px;color:#cfd3da">
+    <span style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center">
+      <span style="background:#00E5C3;color:#0b0f17;padding:2px 8px;border-radius:3px;font-weight:700;font-size:10px">PREVIEW</span>
+      This is a static preview of the PWA. The live, data-connected version runs through the
+      <a href="https://sultrixtrade.com" target="_blank" rel="noopener" style="color:#00E5C3;text-decoration:underline">Sultrix desktop app</a>.
+    </span>
+  </div>
+
+  <!-- App root -->
+  <div id="app" class="app" hidden>
+    <header class="topbar">
+      <div class="brand">
+        <span id="statusDot" class="brand-dot"></span>
+        <span>Sultrix <span id="verTag" class="muted" style="font-size:11px;font-weight:500"></span></span>
+        <span id="tierBadge" class="tier-badge" hidden></span>
+      </div>
+      <div class="topbar-actions">
+        <button class="icon-btn" id="refreshBtn" title="Refresh"><span>↻</span></button>
+        <button class="icon-btn" id="alertsBtn" title="Alerts"><span>🔔</span><span id="alertsBadge" class="badge-dot" hidden></span></button>
+        <button class="icon-btn" id="settingsBtn" title="Settings"><span>⚙</span></button>
+      </div>
+    </header>
+
+    <main id="main">
+      <!-- HOME -->
+      <section class="tab-content active" id="tab-home" data-tab="home">
+        <div class="kpi big">
+          <div class="lbl">Total PnL</div>
+          <div class="val" id="kpiTotalPnl">—</div>
+          <div class="sub"><span id="kpiDailyPnl">—</span> today</div>
+        </div>
+        <div class="kpi-row">
+          <div class="kpi"><div class="lbl">Unrealized</div><div class="val" id="kpiUnrealized">—</div></div>
+          <div class="kpi"><div class="lbl">Realized</div><div class="val" id="kpiRealized">—</div></div>
+        </div>
+
+        <div class="card">
+          <div class="card-h">
+            <h3>Markets</h3>
+            <span class="sub">live status</span>
+          </div>
+          <div class="markets">
+            <div class="market" id="m-crypto"><div class="name">Crypto</div><div class="status">—</div><div class="pnl">—</div></div>
+            <div class="market" id="m-forex"><div class="name">Forex</div><div class="status">—</div><div class="pnl">—</div></div>
+            <div class="market" id="m-stocks"><div class="name">Stocks</div><div class="status">—</div><div class="pnl">—</div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h3>Open Positions</h3><span class="sub" id="posCount">0</span></div>
+          <div id="posList"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h3>Agents</h3><span class="sub" id="agentStatus">—</span></div>
+          <div id="agentList"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h3>Alerts</h3><a href="#" data-jump="alerts">view all</a></div>
+          <div id="alertsPreview"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h3>Bot Control</h3></div>
+          <div class="cmd-grid">
+            <button class="cmd-btn" data-cmd="status">Status</button>
+            <button class="cmd-btn" data-cmd="pnl">PnL</button>
+            <button class="cmd-btn" data-cmd="positions">Positions</button>
+            <button class="cmd-btn" data-cmd="refresh">Refresh</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- POSITIONS -->
+      <section class="tab-content" id="tab-positions" data-tab="positions">
+        <div class="card">
+          <div class="card-h"><h3>All Open Positions</h3><span class="sub" id="posCount2">0</span></div>
+          <div class="chips">
+            <button class="chip active" data-filter="all">All</button>
+            <button class="chip" data-filter="crypto">Crypto</button>
+            <button class="chip" data-filter="forex">Forex</button>
+            <button class="chip" data-filter="stocks">Stocks</button>
+          </div>
+          <div id="posList2"></div>
+        </div>
+      </section>
+
+      <!-- CHARTS -->
+      <section class="tab-content" id="tab-charts" data-tab="charts">
+        <div class="card">
+          <div class="card-h"><h3>TradingView</h3><span class="sub" id="chartInfo">BTCUSDT · 1H</span></div>
+          <div class="chart-controls">
+            <select id="chartMarket">
+              <option value="crypto">Crypto</option>
+              <option value="forex">Forex</option>
+              <option value="stocks">Stocks</option>
+            </select>
+            <select id="chartSymbol"></select>
+            <select id="chartTf">
+              <option value="1">1m</option>
+              <option value="5">5m</option>
+              <option value="15">15m</option>
+              <option value="60" selected>1H</option>
+              <option value="240">4H</option>
+              <option value="D">1D</option>
+              <option value="W">1W</option>
+            </select>
+          </div>
+          <div class="chart-wrap">
+            <iframe id="tvFrame" allowfullscreen></iframe>
+          </div>
+        </div>
+      </section>
+
+      <!-- AGENTS -->
+      <section class="tab-content" id="tab-agents" data-tab="agents">
+        <div class="card">
+          <div class="card-h"><h3>All Agents</h3><span class="sub" id="agentCount">0</span></div>
+          <div id="agentListFull"></div>
+        </div>
+      </section>
+
+      <!-- ALERTS -->
+      <section class="tab-content" id="tab-alerts" data-tab="alerts">
+        <div class="card">
+          <div class="card-h">
+            <h3>Alerts History</h3>
+            <div class="row"><span class="sub" id="alertCount">0</span><button class="icon-btn" id="markAllReadBtn" title="Mark all read"><span>✓</span></button></div>
+          </div>
+          <div class="chips">
+            <button class="chip active" data-asev="all">All</button>
+            <button class="chip" data-asev="CRITICAL">Critical</button>
+            <button class="chip" data-asev="HIGH">High</button>
+            <button class="chip" data-asev="MEDIUM">Med</button>
+            <button class="chip" data-asev="LOW">Low</button>
+          </div>
+          <div id="alertList"></div>
+        </div>
+      </section>
+
+      <!-- RISK -->
+      <section class="tab-content" id="tab-risk" data-tab="risk">
+        <div class="card">
+          <div class="card-h"><h3>Risk Status</h3><span class="sub" id="riskThreat">—</span></div>
+          <div class="kpi-row">
+            <div class="kpi"><div class="lbl">Threat</div><div class="val" id="riskThreatVal">—</div></div>
+            <div class="kpi"><div class="lbl">Health</div><div class="val" id="riskHealth">—</div></div>
+            <div class="kpi"><div class="lbl">Integrity</div><div class="val" id="riskIntegrity">—</div></div>
+            <div class="kpi"><div class="lbl">Active rules</div><div class="val" id="riskRules">—</div></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h3>Exposures</h3></div>
+          <div id="exposures"></div>
+        </div>
+      </section>
+
+      <!-- BOT -->
+      <section class="tab-content" id="tab-bot" data-tab="bot">
+        <div class="card">
+          <div class="card-h"><h3>Authorized Commands</h3></div>
+          <div class="cmd-grid">
+            <button class="cmd-btn" data-cmd="status">Status</button>
+            <button class="cmd-btn" data-cmd="pnl">PnL</button>
+            <button class="cmd-btn" data-cmd="positions">Positions</button>
+            <button class="cmd-btn" data-cmd="risk">Risk</button>
+            <button class="cmd-btn" data-cmd="agents">Agents</button>
+            <button class="cmd-btn" data-cmd="refresh">Refresh</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h3>Bot State</h3><span class="sub" id="botState">—</span></div>
+          <div class="kpi-row">
+            <div class="kpi"><div class="lbl">Uptime</div><div class="val" id="botUptime">—</div></div>
+            <div class="kpi"><div class="lbl">Fills</div><div class="val" id="botFills">—</div></div>
+            <div class="kpi"><div class="lbl">Cycles</div><div class="val" id="botCycles">—</div></div>
+            <div class="kpi"><div class="lbl">Regime</div><div class="val" id="botRegime">—</div></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h3>Output</h3><div class="row"><button class="icon-btn" id="clearCmd" title="Clear"><span>🗑</span></button></div></div>
+          <pre id="cmdOutput" style="white-space:pre-wrap;font-family:monospace;font-size:12px;background:var(--bg-elev);padding:10px;border-radius:6px;max-height:280px;overflow:auto"></pre>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h3>Chat <span class="muted" id="chatTierBadge" style="font-size:11px"></span></h3><span class="sub" id="chatStatus">●</span></div>
+          <div class="chat-log" id="chatLog" aria-live="polite"></div>
+          <div class="chat-input">
+            <input id="chatInput" type="text" placeholder="Ask anything — e.g. 'What does a 3-loss rotation do?'" autocomplete="off" maxlength="2000">
+            <button class="btn" id="chatSend">Send</button>
+          </div>
+          <div class="muted" id="chatMeta" style="font-size:11px;margin-top:6px">Free trial uses meta-llama/llama-3.1-8b-instruct. Paid tier upgrades to gpt-4o-mini.</div>
+        </div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section class="tab-content" id="tab-settings" data-tab="settings">
+        <div class="card">
+          <div class="card-h"><h3>Account</h3></div>
+          <div class="row" style="justify-content:space-between;padding:6px 0"><span>Plan</span><span class="tag ok" id="acctPlan">—</span></div>
+          <div class="row" style="justify-content:space-between;padding:6px 0"><span>Trial</span><span class="muted" id="acctTrial">—</span></div>
+          <div class="row" style="justify-content:space-between;padding:6px 0"><span>Session</span><span class="muted" id="acctSession">—</span></div>
+          <div class="row" style="justify-content:space-between;padding:6px 0"><span>App version</span><span class="muted" id="acctVer">v2.2.11</span></div>
+          <button class="cmd-btn danger" id="logoutBtn" style="margin-top:14px">Log out</button>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h3>Notifications</h3><span class="sub" id="notifStatus">—</span></div>
+          <div id="notifPrefs"></div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Bottom nav -->
+    <nav class="tabbar" role="navigation" aria-label="primary">
+      <a href="#" data-tab="home" class="active"><span class="ic">⌂</span><span>Home</span></a>
+      <a href="#" data-tab="positions"><span class="ic">≡</span><span>Positions</span></a>
+      <a href="#" data-tab="charts"><span class="ic">▦</span><span>Charts</span></a>
+      <a href="#" data-tab="alerts"><span class="ic">🔔</span><span>Alerts</span></a>
+      <a href="#" data-tab="bot"><span class="ic">▶</span><span>Bot</span></a>
+    </nav>
+
+    <!-- Footer link to main site -->
+    <footer class="app-footer">
+      <a href="https://sultrixtrade.com" target="_blank" rel="noopener">sultrixtrade.com</a>
+      <span class="dot">·</span>
+      <a href="https://sultrixtrade.com/pricing" target="_blank" rel="noopener">Plans</a>
+      <span class="dot">·</span>
+      <a href="https://sultrixtrade.com/support" target="_blank" rel="noopener">Support</a>
+    </footer>
+
+    <!-- Toast -->
+    <div id="toast" class="toast"></div>
+  </div>
+
+  <!-- Login screen -->
+  <div id="login" class="login">
+    <div class="login-card">
+      <div class="logo">
+        <div class="b1">SULTRIX</div>
+        <div class="b2" id="loginSubtitle">v2.2.11 — Live Mobile Trading Companion</div>
+      </div>
+      <div class="desc" id="loginDesc">Live PnL, positions, agent status, push alerts, and AI chat from your phone. Runs against the Sultrix desktop app on your PC.</div>
+      <div class="field">
+        <label for="licenseKey">License key (optional)</label>
+        <input id="licenseKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="SULTRIX-XXXX-XXXX-XXXX">
+      </div>
+      <button id="loginBtn" class="btn">Sign in with license</button>
+      <button id="freeBtn" class="btn btn-secondary">Continue without license (Free trial)</button>
+      <div class="error-msg" id="loginErr"></div>
+      <div class="hint">Server: <span id="apiBase">/</span> · <a href="https://sultrixtrade.com" target="_blank" rel="noopener">sultrixtrade.com</a></div>
+
+      <!-- Connect-to-bot wizard: shown when there's no API base configured
+           (i.e. PWA is opened from a public host without ?api_base=...).
+           Replaces the old "this is a preview" message with an actual
+           connection flow. The user pastes the desktop bot's tunnel
+           URL (or scans a QR code from the desktop launcher), the PWA
+           validates the connection, and then proceeds. -->
+      <div id="connectWizard" class="connect-wizard" hidden style="margin-top:14px;padding:16px;border:1.5px solid #00E5C3;border-radius:12px;background:linear-gradient(135deg, rgba(0,229,195,0.10), rgba(124,92,255,0.06));font-size:13px;line-height:1.5;text-align:left">
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px">
+          <div style="font-size:26px;line-height:1">📲</div>
+          <div style="flex:1">
+            <div style="font-weight:700;color:#00E5C3;font-size:15px;margin-bottom:4px">Connect to your Sultrix desktop</div>
+            <div style="color:#cfd3da">This PWA is the live mobile companion to the <strong style="color:#fff">Sultrix desktop app</strong>. Enter the tunnel URL from the launcher (or scan the QR it shows) to link your phone to your bot.</div>
+          </div>
+        </div>
+
+        <!-- Step 1: paste tunnel URL or pick a saved one -->
+        <label for="apiBaseInput" style="display:block;color:#9ca3af;font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Desktop bot tunnel URL</label>
+        <div style="display:flex;gap:8px;align-items:stretch">
+          <input id="apiBaseInput" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false"
+                 placeholder="https://xxxx.trycloudflare.com"
+                 style="flex:1;background:#0b0f17;border:1px solid #2a3142;border-radius:6px;padding:10px 12px;color:#fff;font-family:var(--mono);font-size:12px">
+          <button id="apiBaseConnect" class="btn" style="padding:0 16px;font-size:13px;white-space:nowrap">Connect →</button>
+        </div>
+
+        <div id="savedEndpointsRow" style="display:none;margin-top:10px">
+          <div style="color:#9ca3af;font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Saved endpoints</div>
+          <div id="savedEndpointsList" style="display:flex;flex-direction:column;gap:6px"></div>
+        </div>
+
+        <div id="connectStatus" style="display:none;margin-top:10px;padding:8px 12px;border-radius:6px;font-size:12px"></div>
+
+        <!-- Help link: where do I find this URL? -->
+        <details style="margin-top:12px">
+          <summary style="cursor:pointer;color:#00E5C3;font-size:12px;font-weight:600">Where do I find this URL?</summary>
+          <ol style="margin:8px 0 0 0;padding-left:20px;color:#cfd3da;font-size:12px;line-height:1.7">
+            <li>Open the <strong style="color:#fff">Sultrix desktop app</strong> on your PC.</li>
+            <li>Click <strong style="color:#fff">📡 Remote</strong> in the launcher — this starts a secure tunnel and shows a URL.</li>
+            <li>Click <strong style="color:#fff">📲 Mobile QR</strong> to get a QR code you can scan with this phone, or copy the URL and paste it above.</li>
+          </ol>
+          <div style="margin-top:8px">
+            <a href="https://github.com/muhdfaisalwork-gif/sultrix-releases/releases/latest/download/Sultrix-Setup.exe" target="_blank" rel="noopener" style="color:#00E5C3;font-size:12px;text-decoration:underline">Don't have the desktop app yet? Download it (188 MB) →</a>
+          </div>
+        </details>
+      </div>
+
+      <!-- Backward-compat alias — older code paths may still reference this. Hidden by default. -->
+      <div id="installHint" class="install-hint" hidden style="display:none"></div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
+

@@ -345,6 +345,32 @@
   // ── Login / auth ─────────────────────────────────
   async function login(licenseKey) {
     $('#loginBtn').disabled = true; $('#loginErr').textContent = '';
+    const isPublic = /sultrixtrade\.com|github\.io/.test(location.host);
+    // ── Public host with no bot URL + license key provided: do the
+    //    central-relay lookup FIRST so the user never sees "No bot
+    //    connected" when they hit "Sign in with license". ─────────
+    if (isPublic && !API_BASE && licenseKey && licenseKey.length >= 6) {
+      try {
+        setConnectStatus('Looking up your bot via central relay…', 'info');
+        const rr = await fetch(RELAY_URL + '/api/bot/lookup?license_key=' + encodeURIComponent(licenseKey), {
+          method: 'GET', mode: 'cors',
+          headers: { 'Accept': 'application/json' },
+        });
+        const rd = await rr.json().catch(() => ({}));
+        if (rr.ok && rd.ok && rd.tunnel_url) {
+          const tunnelUrl = String(rd.tunnel_url).replace(/\/$/, '');
+          try { localStorage.setItem('sx.savedLicenseKey', licenseKey); } catch (_) {}
+          saveApiBase(tunnelUrl);
+          // saveApiBase reloads, so the rest of login() won't run on
+          // this path — the page will reload and the user will be
+          // authenticated against the discovered bot.
+          setConnectStatus('Found your bot at ' + tunnelUrl + ' — connecting…', 'ok');
+          return;
+        }
+        // Relay said no — fall through to the wizard so the user can
+        // see the "No bot found" hint + paste a URL manually.
+      } catch (_) { /* network blip — fall through */ }
+    }
     // On a public host with no bot connected, show the connect wizard
     // (instead of the old "this is a preview" hint) so the user can paste
     // their tunnel URL right here. The wizard persists the URL in
@@ -374,7 +400,6 @@
       // Public host with no backend: the PWA can't reach a dashboard. Show
       // the connect wizard for ANY non-success status — all of those mean
       // "no live bot reachable" when the PWA is hosted on a static-only host.
-      const isPublic = /sultrixtrade\.com|github\.io/.test(location.host);
       const isNoBackend = e.message === 'network_unreachable' || e.status === 0;
       const isMethodNotAllowed = e.status === 405;
       const isAuthMissing = e.status === 401 || e.status === 403;

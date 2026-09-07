@@ -1,4 +1,4 @@
-/* Sultrix PWA v2.2.11 — Service Worker
+/* Sultrix PWA v2.2.12 — Service Worker
  *
  * Caching strategy:
  *   - app shell  : stale-while-revalidate
@@ -7,7 +7,7 @@
  *   - charts / tv : stale-while-revalidate
  *   - icons / statics: cache-first
  */
-const VERSION = 'sultrix-pwa-v2.2.11';
+const VERSION = 'sultrix-pwa-v2.2.12';
 const APP_SHELL = [
   '/',
   '/manifest.json',

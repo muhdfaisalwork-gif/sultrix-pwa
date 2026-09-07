@@ -261,12 +261,21 @@
     const relayInput = document.getElementById('relayLicenseKey');
     const relayBtn   = document.getElementById('relayLookupBtn');
     if (relayInput && relayBtn) {
-      // Pre-fill from the login-form's license field (so the user doesn't
-      // have to type the same key twice).
+      // Pre-fill in priority order:
+      //   1. Login form field (user just typed a key there)
+      //   2. Previously-saved key in localStorage (auto-restore on next visit)
       try {
         const loginField = document.getElementById('licenseKey');
         if (loginField && loginField.value && !relayInput.value) {
           relayInput.value = loginField.value;
+        }
+        if (!relayInput.value) {
+          const saved = localStorage.getItem('sx.savedLicenseKey');
+          if (saved) {
+            relayInput.value = saved;
+            // Also pre-fill the login field so subsequent auth works
+            if (loginField) loginField.value = saved;
+          }
         }
       } catch (_) {}
       // Keep the login field in sync if the user types here first
@@ -278,6 +287,17 @@
       });
       relayBtn.addEventListener('click', () => lookupByLicenseKey(relayInput.value));
       relayInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') lookupByLicenseKey(relayInput.value); });
+      // Auto-attempt: if we have a saved key and the PWA is on a public host
+      // with no API base, automatically try the relay lookup. This is the
+      // "permanent link" promise — the user reopens the PWA and it just
+      // works, no button click needed.
+      try {
+        const saved = localStorage.getItem('sx.savedLicenseKey');
+        const isPublic = /sultrixtrade\.com|github\.io/.test(location.host);
+        if (saved && isPublic && !API_BASE) {
+          setTimeout(() => lookupByLicenseKey(saved), 600);
+        }
+      } catch (_) {}
     }
   }
 

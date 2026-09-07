@@ -270,14 +270,22 @@
         <div class="b2" id="loginSubtitle">v2.2.11 — Live Mobile Trading Companion</div>
       </div>
       <div class="desc" id="loginDesc">Live PnL, positions, agent status, push alerts, and AI chat from your phone. Runs against the Sultrix desktop app on your PC.</div>
-      <div class="field">
-        <label for="licenseKey">License key (optional)</label>
-        <input id="licenseKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="SULTRIX-XXXX-XXXX-XXXX">
+
+      <!--
+        Sign-in form: hidden on public hosts with no bot connected (the form
+        always returns 405 there). Replaced by the connect wizard below.
+        On a public host with a saved API base, the form is shown.
+      -->
+      <div id="loginFormFields">
+        <div class="field">
+          <label for="licenseKey">License key (optional)</label>
+          <input id="licenseKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="SULTRIX-XXXX-XXXX-XXXX">
+        </div>
+        <button id="loginBtn" class="btn">Sign in with license</button>
+        <button id="freeBtn" class="btn btn-secondary">Continue without license (Free trial)</button>
+        <div class="error-msg" id="loginErr"></div>
+        <div class="hint">Server: <span id="apiBase">/</span> · <a href="https://sultrixtrade.com" target="_blank" rel="noopener">sultrixtrade.com</a></div>
       </div>
-      <button id="loginBtn" class="btn">Sign in with license</button>
-      <button id="freeBtn" class="btn btn-secondary">Continue without license (Free trial)</button>
-      <div class="error-msg" id="loginErr"></div>
-      <div class="hint">Server: <span id="apiBase">/</span> · <a href="https://sultrixtrade.com" target="_blank" rel="noopener">sultrixtrade.com</a></div>
 
       <!-- Connect-to-bot wizard: shown when there's no API base configured
            (i.e. PWA is opened from a public host without ?api_base=...).

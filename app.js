@@ -155,7 +155,22 @@
     if (!isPublic) { wiz.hidden = true; return; }
     if (API_BASE) { wiz.hidden = true; return; }
     wiz.hidden = false;
+    // On a public host with no bot connected, the login form is useless
+    // (it always returns 405). Hide it so the user is forced through
+    // the connect wizard. Once they enter a working tunnel URL, the
+    // wizard reloads the page and the login form returns.
+    if (isPublic) {
+      const loginForm = document.getElementById('loginFormFields');
+      if (loginForm) loginForm.style.display = 'none';
+      const loginFormHeader = document.getElementById('loginFormHeader');
+      if (loginFormHeader) loginFormHeader.style.display = 'none';
+    }
     renderSavedEndpoints();
+    // Autofocus the URL input so the user can just paste/type.
+    setTimeout(() => {
+      const input = document.getElementById('apiBaseInput');
+      if (input) input.focus();
+    }, 100);
   }
   function renderSavedEndpoints() {
     const list = document.getElementById('savedEndpointsList');
@@ -277,12 +292,18 @@
       const isServerError = e.status >= 500;
       if (isPublic && (isNoBackend || isMethodNotAllowed || isAuthMissing || isServerError)) {
         showConnectWizard();
+        // Scroll the connect wizard into view so the user immediately
+        // sees it instead of just a small error text.
+        setTimeout(() => {
+          const wiz = document.getElementById('connectWizard');
+          if (wiz) wiz.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 50);
         if (isNoBackend) {
-          msg = 'No bot connected. Paste your desktop bot URL below to get started.';
+          msg = '👇 No bot connected. Paste your desktop bot URL below to get started.';
         } else if (isMethodNotAllowed || isAuthMissing) {
-          msg = 'Bot reached but login failed — check that the desktop bot is running the latest version.';
+          msg = '👇 Bot reached but login failed — check that the desktop bot is running the latest version, then enter its URL below.';
         } else {
-          msg = 'Bot is unreachable. Check that the desktop bot is running and 📡 Remote is enabled.';
+          msg = '👇 Bot is unreachable. Check that the desktop bot is running and 📡 Remote is enabled, then enter its URL below.';
         }
         const errEl = document.getElementById('loginErr');
         if (errEl) {

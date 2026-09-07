@@ -302,14 +302,33 @@
           </div>
         </div>
 
-        <!-- Step 1: paste tunnel URL or pick a saved one -->
-        <label for="apiBaseInput" style="display:block;color:#9ca3af;font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Desktop bot tunnel URL</label>
+        <!-- Step 1: enter license key — the PWA queries the central relay
+             to auto-discover the bot's current tunnel URL. This is the
+             primary path: the user never has to copy-paste a trycloudflare
+             URL again. -->
+        <label for="relayLicenseKey" style="display:block;color:#9ca3af;font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">License key <span style="color:#00E5C3">— auto-find my bot</span></label>
         <div style="display:flex;gap:8px;align-items:stretch">
-          <input id="apiBaseInput" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false"
-                 placeholder="https://xxxx.trycloudflare.com"
+          <input id="relayLicenseKey" type="text" autocapitalize="off" autocorrect="off" spellcheck="false"
+                 placeholder="SULTRIX-XXXX-XXXX-XXXX"
                  style="flex:1;background:#0b0f17;border:1px solid #2a3142;border-radius:6px;padding:10px 12px;color:#fff;font-family:var(--mono);font-size:12px">
-          <button id="apiBaseConnect" class="btn" style="padding:0 16px;font-size:13px;white-space:nowrap">Connect →</button>
+          <button id="relayLookupBtn" class="btn" style="padding:0 16px;font-size:13px;white-space:nowrap">Find my bot →</button>
         </div>
+        <div style="margin-top:6px;color:#6b7280;font-size:11px">The PWA remembers your key. Each time you open the app, it asks the central relay where your desktop is — no URL to copy-paste, no QR to scan. The desktop bot pushes its current URL every minute.</div>
+
+        <!-- Step 2 fallback: paste tunnel URL or pick a saved one. Hidden by
+             default if a relay lookup succeeds, so first-time users go through
+             the license-key path. The toggle below lets power users re-enable
+             manual paste if their bot isn't behind the relay (e.g. testnet). -->
+        <details id="manualUrlSection" style="margin-top:14px">
+          <summary style="cursor:pointer;color:#9ca3af;font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:0.08em">Or paste tunnel URL manually</summary>
+          <label for="apiBaseInput" style="display:block;color:#9ca3af;font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:0.08em;margin:10px 0 6px">Desktop bot tunnel URL</label>
+          <div style="display:flex;gap:8px;align-items:stretch">
+            <input id="apiBaseInput" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false"
+                   placeholder="https://xxxx.trycloudflare.com"
+                   style="flex:1;background:#0b0f17;border:1px solid #2a3142;border-radius:6px;padding:10px 12px;color:#fff;font-family:var(--mono);font-size:12px">
+            <button id="apiBaseConnect" class="btn" style="padding:0 16px;font-size:13px;white-space:nowrap">Connect →</button>
+          </div>
+        </details>
 
         <div id="savedEndpointsRow" style="display:none;margin-top:10px">
           <div style="color:#9ca3af;font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Saved endpoints</div>

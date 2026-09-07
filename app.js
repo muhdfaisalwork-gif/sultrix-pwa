@@ -144,10 +144,13 @@
 
   // ── Connect wizard ─────────────────────────────────
   // Shown when the PWA is served from a public host (app.sultrixtrade.com)
-  // and there's no desktop bot URL configured. Lets the user either:
-  //   - paste the tunnel URL from the desktop launcher, or
-  //   - pick a previously-saved endpoint from history.
-  // On success, saves to localStorage and retries the login flow.
+  // and there's no desktop bot URL configured. The PRIMARY path is now the
+  // license-key relay lookup — the user types their license key, the PWA
+  // calls https://sultrix-relay.muhd-faisal-work.workers.dev/api/bot/lookup
+  // to find the bot's current tunnel URL, and connects automatically. No
+  // more copy-pasting random trycloudflare URLs on every bot restart.
+  // The manual URL paste is still available as a fallback (for testnet
+  // setups, debugging, etc.).
   function showConnectWizard() {
     const isPublic = /sultrixtrade\.com|github\.io/.test(location.host);
     const wiz = document.getElementById('connectWizard');
@@ -248,9 +251,75 @@
   function wireConnectWizard() {
     const input = document.getElementById('apiBaseInput');
     const btn   = document.getElementById('apiBaseConnect');
-    if (!input || !btn) return;
-    btn.addEventListener('click', () => tryConnect(input.value));
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryConnect(input.value); });
+    if (input && btn) {
+      btn.addEventListener('click', () => tryConnect(input.value));
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryConnect(input.value); });
+    }
+    // Primary path: license-key relay lookup. This is the new "permanent
+    // link" flow — the PWA asks the central relay where the bot is, instead
+    // of making the user copy-paste a trycloudflare URL.
+    const relayInput = document.getElementById('relayLicenseKey');
+    const relayBtn   = document.getElementById('relayLookupBtn');
+    if (relayInput && relayBtn) {
+      // Pre-fill from the login-form's license field (so the user doesn't
+      // have to type the same key twice).
+      try {
+        const loginField = document.getElementById('licenseKey');
+        if (loginField && loginField.value && !relayInput.value) {
+          relayInput.value = loginField.value;
+        }
+      } catch (_) {}
+      // Keep the login field in sync if the user types here first
+      relayInput.addEventListener('input', () => {
+        try {
+          const loginField = document.getElementById('licenseKey');
+          if (loginField) loginField.value = relayInput.value;
+        } catch (_) {}
+      });
+      relayBtn.addEventListener('click', () => lookupByLicenseKey(relayInput.value));
+      relayInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') lookupByLicenseKey(relayInput.value); });
+    }
+  }
+
+  // ── Relay lookup — primary connect path ───────────
+  // The desktop bot pushes its current trycloudflare URL to the central
+  // relay Worker every 60 seconds (KV TTL 1h, stale check 5min). The PWA
+  // asks the relay "where is license key X right now?" and gets back a
+  // live tunnel URL. The user only ever needs to remember their license
+  // key — never a URL.
+  const RELAY_URL = 'https://sultrix-relay.muhd-faisal-work.workers.dev';
+  async function lookupByLicenseKey(rawKey) {
+    const key = String(rawKey || '').trim();
+    if (!key) { setConnectStatus('Enter your license key first', 'err'); return; }
+    if (key.length < 6) { setConnectStatus('License key looks too short', 'err'); return; }
+    setConnectStatus('Asking central relay where your bot is…', 'info');
+    try {
+      const r = await fetch(RELAY_URL + '/api/bot/lookup?license_key=' + encodeURIComponent(key), {
+        method: 'GET',
+        mode: 'cors',
+        headers: { 'Accept': 'application/json' },
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) {
+        if (r.status === 404) {
+          setConnectStatus('No bot found for that key. Is the desktop app running with 📡 Remote enabled?', 'err');
+        } else {
+          setConnectStatus('Relay lookup failed: ' + (data.error || r.status), 'err');
+        }
+        return;
+      }
+      const tunnelUrl = (data.tunnel_url || '').replace(/\/$/, '');
+      if (!tunnelUrl) { setConnectStatus('Relay returned no URL', 'err'); return; }
+      // Also save the key so the PWA can re-lookup next time without the
+      // user re-entering it.
+      try { localStorage.setItem('sx.savedLicenseKey', key); } catch (_) {}
+      setConnectStatus('Found your bot at ' + tunnelUrl + ' — connecting…', 'ok');
+      // Now treat the discovered URL as the api_base and run the normal
+      // connect probe (validates /api/pwa/status before persisting).
+      tryConnect(tunnelUrl);
+    } catch (e) {
+      setConnectStatus('Could not reach the relay. Check your network and try again.', 'err');
+    }
   }
 
   // ── Login / auth ─────────────────────────────────

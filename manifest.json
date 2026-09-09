@@ -1,7 +1,7 @@
 {
   "name": "Sultrix Trading",
   "short_name": "Sultrix",
-  "description": "Sultrix v2.2.12 — mobile companion for the Sultrix trading bot",
+  "description": "Sultrix v2.2.13 — mobile companion for the Sultrix trading bot",
   "id": "/",
   "start_url": "/",
   "scope": "/",
@@ -55,6 +55,6 @@
       "icons": [{"src": "assets/icons/icon-192.png", "sizes": "192x192"}]
     }
   ],
-  "version": "2.2.12",
+  "version": "2.2.13",
   "prefer_related_applications": false
 }

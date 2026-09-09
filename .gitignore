@@ -1,0 +1,5 @@
+vapid_out.json
+askpass.sh
+*.pem
+*.key
+.env

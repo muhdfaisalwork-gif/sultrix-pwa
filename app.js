@@ -483,7 +483,15 @@
     const j = e.target.closest('[data-jump]');
     if (j) { e.preventDefault(); setActiveTab(j.dataset.jump); return; }
     const c = e.target.closest('[data-cmd]');
-    if (c) { runCommand(c.dataset.cmd); return; }
+    if (c) {
+      // "refresh" is a client-side data reload, not a bot command -- it was
+      // being sent to /api/pwa/commands like every other data-cmd button,
+      // which only recognizes status/pnl/positions/health/version/help and
+      // returned a confusing "unknown_command" instead of refreshing anything.
+      if (c.dataset.cmd === 'refresh') { refreshAll(); refreshSlow(); toast('Refreshed', 'ok'); return; }
+      runCommand(c.dataset.cmd);
+      return;
+    }
     const f = e.target.closest('[data-filter]');
     if (f) { state.posFilter = f.dataset.filter;
       $$('[data-filter]').forEach(b => b.classList.toggle('active', b === f));

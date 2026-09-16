@@ -30,6 +30,8 @@
   const state = {
     session: null,
     plan: 'unknown',
+    isTrial: false,
+    isDeveloper: false,
     trialDaysLeft: null,
     lastFetch: 0,
     conn: 'live',                  // live | updating | offline
@@ -380,6 +382,8 @@
       const r = await api('/api/pwa/auth', { method: 'POST', body: JSON.stringify({ license_key: licenseKey || '' }) });
       state.session = r.session_token;
       state.plan = r.plan || r.tier || 'free';
+      state.isTrial = !!r.is_trial;
+      state.isDeveloper = !!r.is_developer;
       state.trialDaysLeft = r.trial_days_left;
       state.readOnly = !!r.read_only;
       // Sentinel fingerprint only — never store the raw key.
@@ -659,12 +663,20 @@
     const tb = $('#tierBadge');
     if (tb) {
       tb.hidden = false;
-      tb.className = 'tier-badge tier-' + (state.plan || 'free');
-      tb.textContent = state.plan === 'developer' ? 'DEV'
+      // /api/pwa/auth + /api/pwa/account report `plan` as only
+      // 'basic'|'pro'|'ultra' (license_manager.Plan) -- trial/developer
+      // status comes back as separate boolean fields (is_trial/is_developer),
+      // never as a `plan` value. state.plan could therefore never equal
+      // 'developer' or 'trial' here, so those branches (and the matching
+      // .tier-developer/.tier-trial CSS classes, both defined in
+      // styles.css) never fired. Check the booleans instead.
+      const tier = state.isDeveloper ? 'developer' : state.isTrial ? 'trial' : (state.plan || 'free');
+      tb.className = 'tier-badge tier-' + tier;
+      tb.textContent = state.isDeveloper ? 'DEV'
+                     : state.isTrial ? 'TRIAL'
                      : state.plan === 'ultra' ? 'ULTRA'
-                     : state.plan === 'trial' ? 'TRIAL'
                      : state.plan === 'free' ? 'FREE'
-                     : (state.plan || '?');
+                     : (state.plan || '?').toUpperCase();
     }
   }
 
@@ -859,6 +871,7 @@
       state.alerts = (alerts || []).map(a => ({ ...a, read: /READ_BY_PWA/.test(a.payload || '') }));
       state.risk = risk;
       state.plan = (account && account.plan) || state.plan;
+      if (account) { state.isTrial = !!account.is_trial; state.isDeveloper = !!account.is_developer; }
       state.trialDaysLeft = (account && account.trial_days_left) || state.trialDaysLeft;
       if (prefs) state.notifPrefs = prefs;
       renderAgents(agents);

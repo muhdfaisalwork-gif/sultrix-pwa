@@ -449,6 +449,19 @@
     state.session = null;
     try { localStorage.removeItem(STORAGE.TOKEN); } catch (_) {}
     try { navigator.serviceWorker && navigator.serviceWorker.ready.then((r) => r.getSubscription()).then((s) => s && s.unsubscribe()); } catch (_) {}
+  
+    // New logout logic
+    try { localStorage.removeItem('sx.savedLicenseKey'); } catch (_) {}
+    try { STORAGE.LICENSE_HASH && localStorage.removeItem(STORAGE.LICENSE_HASH); } catch (_) {}
+    try { 
+      if (navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({type: 'logout'});
+      }
+    } catch (_) {}
+    try {
+      caches.keys().then(ks => ks.forEach(k => caches.delete(k)));
+    } catch (_) {}
+  
     showLogin();
   }
 

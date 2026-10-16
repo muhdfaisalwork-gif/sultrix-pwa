@@ -116,3 +116,18 @@ self.addEventListener('notificationclick', (event) => {
       })
   );
 });
+
+// A logout must leave no private data on the phone: the page asks the worker to drop every cache.
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'logout') {
+    event.waitUntil(
+      caches.keys().then((cacheNames) => {
+        return Promise.all(
+          cacheNames.map((cacheName) => {
+            return caches.delete(cacheName);
+          })
+        );
+      })
+    );
+  }
+});

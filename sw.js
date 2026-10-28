@@ -7,7 +7,7 @@
  *   - charts / tv : stale-while-revalidate
  *   - icons / statics: cache-first
  */
-const VERSION = 'sultrix-pwa-v2.2.13';
+const VERSION = 'sultrix-pwa-v2.2.13-l1';
 const APP_SHELL = [
   '/',
   '/manifest.json',
@@ -16,6 +16,7 @@ const APP_SHELL = [
   '/styles.css',
   '/assets/icons/icon-192.png',
   '/assets/icons/icon-512.png',
+  '/assets/icons/mark-96.png',
 ];
 
 self.addEventListener('install', (event) => {

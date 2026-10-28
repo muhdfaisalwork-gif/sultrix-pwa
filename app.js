@@ -1,4 +1,4 @@
-/* Sultrix PWA v2.2.13 — main app
+/* Sultrix PWA v2.2.36 — main app
  *
  *  - Connect: first-run wizard asks for desktop bot's tunnel URL
  *    (or detects `?api_base=...` from a scanned QR), then validates
@@ -24,7 +24,7 @@
   };
   const POLL_MS = 12_000;        // home refresh
   const SLOW_POLL_MS = 45_000;   // agents / alerts
-  const BUILD = '2.2.13';
+  const BUILD = '2.2.36';
 
   // ── State ────────────────────────────────────────
   const state = {

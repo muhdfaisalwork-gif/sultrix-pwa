@@ -308,11 +308,11 @@
              primary path: the user never has to copy-paste a trycloudflare
              URL again. -->
         <label for="relayLicenseKey" style="display:block;color:#9ca3af;font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">License key or Connection ID <span style="color:#00E5C3">— auto-find my bot</span></label>
-        <div style="display:flex;gap:8px;align-items:stretch">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:stretch">
           <input id="relayLicenseKey" type="text" autocapitalize="off" autocorrect="off" spellcheck="false"
                  placeholder="STX-202609-XXXX-XXXX  or  STX-FREE-XXXX-XXXX-XXXX"
-                 style="flex:1;background:#0b0f17;border:1px solid #2a3142;border-radius:6px;padding:10px 12px;color:#fff;font-family:var(--mono);font-size:12px">
-          <button id="relayLookupBtn" class="btn" style="padding:0 16px;font-size:13px;white-space:nowrap">Find my bot →</button>
+                 style="flex:1 1 160px;min-width:0;background:#0b0f17;border:1px solid #2a3142;border-radius:6px;padding:10px 12px;color:#fff;font-family:var(--mono);font-size:12px">
+          <button id="relayLookupBtn" class="btn" style="width:auto;flex:1 1 auto;padding:10px 16px;font-size:13px;white-space:nowrap">Find my bot →</button>
         </div>
         <div style="margin-top:6px;color:#6b7280;font-size:11px">Paste your license key (paid/trial) or your desktop's auto-generated Connection ID (free tier — shown in the Sultrix launcher's <strong style="color:#fff">PWA KEY</strong> row). The PWA remembers it; the desktop pushes its current URL every minute.</div>
 
@@ -323,11 +323,11 @@
         <details id="manualUrlSection" style="margin-top:14px">
           <summary style="cursor:pointer;color:#9ca3af;font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:0.08em">Or paste tunnel URL manually</summary>
           <label for="apiBaseInput" style="display:block;color:#9ca3af;font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:0.08em;margin:10px 0 6px">Desktop bot tunnel URL</label>
-          <div style="display:flex;gap:8px;align-items:stretch">
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:stretch">
             <input id="apiBaseInput" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false"
                    placeholder="https://xxxx.trycloudflare.com"
-                   style="flex:1;background:#0b0f17;border:1px solid #2a3142;border-radius:6px;padding:10px 12px;color:#fff;font-family:var(--mono);font-size:12px">
-            <button id="apiBaseConnect" class="btn" style="padding:0 16px;font-size:13px;white-space:nowrap">Connect →</button>
+                   style="flex:1 1 160px;min-width:0;background:#0b0f17;border:1px solid #2a3142;border-radius:6px;padding:10px 12px;color:#fff;font-family:var(--mono);font-size:12px">
+            <button id="apiBaseConnect" class="btn" style="width:auto;flex:1 1 auto;padding:10px 16px;font-size:13px;white-space:nowrap">Connect →</button>
           </div>
         </details>
 

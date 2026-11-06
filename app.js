@@ -24,7 +24,7 @@
   };
   const POLL_MS = 12_000;        // home refresh
   const SLOW_POLL_MS = 45_000;   // agents / alerts
-  const BUILD = '2.2.38';
+  const BUILD = '2.2.40';
 
   // ── State ────────────────────────────────────────
   const state = {
@@ -603,6 +603,7 @@
       el.classList.toggle('off', !data.active);
       el.querySelector('.status').textContent = data.active ? 'LIVE' : 'OFF';
       el.querySelector('.pnl').textContent = data.pnl == null ? '—' : fmt.money(data.pnl);
+      el.title = 'Realized today' + (data.unrealized != null ? ' · open ' + fmt.money(data.unrealized) : '');
       el.querySelector('.pnl').className = 'pnl ' + (data.pnl >= 0 ? 'green' : 'red');
     });
   }
@@ -733,6 +734,7 @@
       <div class="sev ${sev}"></div>
       <div class="body">
         <div class="title">${escapeHtml(a.title || a.event_type || a.type || 'Alert')}</div>
+        ${a.detail ? `<div class="meta">${escapeHtml(String(a.detail).slice(0, 160))}</div>` : ''}
         <div class="meta">${escapeHtml(a.market || '')} ${a.symbol ? '· ' + escapeHtml(a.symbol) : ''} · ${fmt.rel(a.ts)} · ${escapeHtml(a.severity || '')}</div>
       </div>
     </div>`;
@@ -824,11 +826,23 @@
     forex:  ['EURUSD','GBPUSD','USDJPY','AUDUSD','USDCAD','USDCHF','NZDUSD','XAUUSD'],
     stocks: ['SPY','QQQ','AAPL','MSFT','NVDA','TSLA','AMZN','META','AMD'],
   };
+  // The fixed list plus every instrument the bot holds right now (crypto coins, forex pairs, stocks, tokenized stocks shown under their ticker).
+  function chartSymbols(m) {
+    const list = (TV_SYMBOLS[m] || []).slice();
+    (state.pos || []).forEach(p => {
+      if ((p.market || '').toLowerCase() !== m) return;
+      const raw = String(p.symbol || '');
+      const tok = /^([A-Z]{1,5})B\/USDT$/.exec(raw);
+      const s = m === 'stocks' && tok ? tok[1] : raw.replace('/', '');
+      if (/^[A-Z0-9]{2,12}$/.test(s) && !list.includes(s) && list.length < 40) list.push(s);
+    });
+    return list;
+  }
   function updateChartSymbolSelect() {
     const m = state.chart.market;
     const sel = $('#chartSymbol');
     if (!sel) return;
-    sel.innerHTML = (TV_SYMBOLS[m] || []).map(s => `<option value="${s}">${s}</option>`).join('');
+    sel.innerHTML = chartSymbols(m).map(s => `<option value="${s}">${s}</option>`).join('');
     sel.value = state.chart.symbol;
   }
   function updateChart() {

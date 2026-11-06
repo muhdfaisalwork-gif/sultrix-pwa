@@ -987,6 +987,58 @@
     }
   }
 
+  // ---- Install helper -------------------------------------------------------
+  // Chrome/Edge/Android fire beforeinstallprompt once, early; it must be captured at load time, not inside init().
+  // iOS Safari never fires it, so it gets the manual Share-sheet steps. Other cases get the browser-menu hint.
+  const INSTALL_HIDE_DAYS = 7;
+  let deferredInstall = null;
+  let installHandled = false;   // set once the browser prompt fired, was used, or the app got installed: the manual-steps hint must not appear after that
+  const isStandalone = () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  const isIos = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const installDismissed = () => { try { return Date.now() - Number(localStorage.getItem('sultrix_install_hidden') || 0) < INSTALL_HIDE_DAYS * 864e5; } catch (_) { return false; } };
+  function showInstallBar(text, withButton) {
+    const bar = document.getElementById('installBar');
+    if (!bar || isStandalone() || installDismissed()) return;
+    document.getElementById('installText').textContent = text;
+    document.getElementById('installBtn').hidden = !withButton;
+    bar.hidden = false;
+  }
+  function hideInstallBar(remember) {
+    const bar = document.getElementById('installBar');
+    if (bar) bar.hidden = true;
+    if (remember) { try { localStorage.setItem('sultrix_install_hidden', String(Date.now())); } catch (_) {} }
+  }
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstall = e;
+    installHandled = true;
+    showInstallBar('Install Sultrix on your phone for one-tap access.', true);
+  });
+  window.addEventListener('appinstalled', () => { deferredInstall = null; installHandled = true; hideInstallBar(false); });
+  function initInstallBar() {
+    const btn = document.getElementById('installBtn'), close = document.getElementById('installClose');
+    if (btn) btn.addEventListener('click', async () => {
+      if (!deferredInstall) return;
+      deferredInstall.prompt();
+      try { await deferredInstall.userChoice; } catch (_) {}
+      deferredInstall = null;
+      hideInstallBar(false);
+    });
+    if (close) close.addEventListener('click', () => hideInstallBar(true));
+    if (isStandalone()) return;
+    if (deferredInstall) { showInstallBar('Install Sultrix on your phone for one-tap access.', true); return; }   // the event fired before this ran
+    if (isIos()) {
+      showInstallBar('To install: tap the Share button, then "Add to Home Screen".', false);
+    } else {
+      // No prompt event after a few seconds (already dismissed, unsupported browser, or private mode): tell the user where the option lives.
+      setTimeout(() => { if (!installHandled) showInstallBar('To install: open the browser menu (⋮) and tap "Install app" or "Add to Home screen".', false); }, 4000);
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initInstallBar); else initInstallBar();
+  // The worker must register even if init() stops early; registering twice is harmless.
+  const registerWorker = () => { if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {}); };
+  if (document.readyState === 'complete') registerWorker(); else window.addEventListener('load', registerWorker);
+
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })();

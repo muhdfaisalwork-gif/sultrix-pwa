@@ -25,6 +25,12 @@
 <body>
   <!-- Connection banner (controlled via JS) -->
   <div id="banner" class="banner" hidden></div>
+  <!-- Install bar: Android/desktop Chrome gets a real Install button, iOS and other browsers get the manual steps. Hidden when already installed. -->
+  <div id="installBar" class="install-bar" role="region" aria-label="Install Sultrix" hidden>
+    <span id="installText" class="install-text"></span>
+    <button id="installBtn" class="install-btn" type="button" hidden>Install app</button>
+    <button id="installClose" class="install-close" type="button" aria-label="Dismiss">&times;</button>
+  </div>
   <!-- Public-host banner: shown only when on app.sultrixtrade.com / github.io, hidden on localhost. -->
   <div id="publicHostBanner" class="public-host-banner" hidden style="background:linear-gradient(90deg, rgba(0,229,195,0.12), rgba(124,92,255,0.10));border-bottom:1px solid rgba(0,229,195,0.3);padding:8px 14px;text-align:center;font-size:12px;color:#cfd3da">
     <span style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center">

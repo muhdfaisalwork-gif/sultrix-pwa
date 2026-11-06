@@ -24,7 +24,7 @@
   };
   const POLL_MS = 12_000;        // home refresh
   const SLOW_POLL_MS = 45_000;   // agents / alerts
-  const BUILD = '2.2.40';
+  const BUILD = '2.2.41';
 
   // ── State ────────────────────────────────────────
   const state = {
@@ -945,6 +945,9 @@
 
   function init() {
     document.getElementById('verTag').textContent = 'v' + BUILD;
+    try {      // the page just reloaded itself because a new version arrived: say so
+      if (Date.now() - Number(sessionStorage.getItem('sx.updReload') || 0) < 15000) setTimeout(() => toast('Updated to v' + BUILD, 'ok'), 600);
+    } catch (_) {}
     document.getElementById('acctVer').textContent = 'v' + BUILD;
     // Show the public-host banner when the PWA is being served from
     // app.sultrixtrade.com or a github.io URL. Hidden on localhost / tunnel.
@@ -1049,8 +1052,56 @@
     }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initInstallBar); else initInstallBar();
+  // ---- Auto-update ----------------------------------------------------------------------------------------------
+  // A new release = a new sw.js (its VERSION changes every time). The browser fetches it, the worker installs, takes over at once (skipWaiting +
+  // clients.claim in sw.js) and the page then reloads itself ONCE, when that cannot interrupt the user: the page is hidden, or nothing is being
+  // typed. Updates are looked for at launch, whenever the app comes back to the front, when the phone gets its connection back, and every 30
+  // minutes, plus a direct check of manifest.json for browsers that are slow to refresh a worker (iOS home-screen apps).
+  const UPDATE_CHECK_MS = 30 * 60 * 1000;
+  const hadController = !!(navigator.serviceWorker && navigator.serviceWorker.controller);   // false on the very first visit: nothing to replace
+  let swReg = null;
+  let updatePending = false;
+  const typingNow = () => { const a = document.activeElement; return !!a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && String(a.value || '') !== ''; };
+  function reloadForUpdate() {
+    try {
+      const last = Number(sessionStorage.getItem('sx.updReload') || 0);
+      if (Date.now() - last < 60000) return;                 // never a reload loop
+      sessionStorage.setItem('sx.updReload', String(Date.now()));
+    } catch (_) {}
+    location.reload();
+  }
+  function applyUpdateWhenSafe() {
+    if (document.hidden || !typingNow()) reloadForUpdate();
+    else updatePending = true;                               // retried as soon as the user leaves the field or the page
+  }
+  async function versionCheck() {
+    try {
+      const r = await fetch('/manifest.json?v=' + Date.now(), { cache: 'no-store' });
+      const m = await r.json();
+      if (m && m.version && m.version !== BUILD && swReg) swReg.update();
+    } catch (_) {}
+  }
+  function checkForUpdate() {
+    try { if (swReg) swReg.update(); } catch (_) {}
+    versionCheck();
+  }
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) applyUpdateWhenSafe(); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { if (updatePending) reloadForUpdate(); } else checkForUpdate();
+    });
+    document.addEventListener('focusout', () => {
+      if (updatePending) setTimeout(() => { if (!typingNow()) reloadForUpdate(); }, 500);
+    });
+    window.addEventListener('online', checkForUpdate);
+    setInterval(checkForUpdate, UPDATE_CHECK_MS);
+  }
+  window.__sxUpdate = { applyUpdateWhenSafe, reloadForUpdate, checkForUpdate };       // used by the self-test and by support to force a check
+
   // The worker must register even if init() stops early; registering twice is harmless.
-  const registerWorker = () => { if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {}); };
+  const registerWorker = () => {
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').then((r) => { swReg = r; checkForUpdate(); }).catch(() => {});
+  };
   if (document.readyState === 'complete') registerWorker(); else window.addEventListener('load', registerWorker);
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

@@ -7,7 +7,7 @@
  *   - charts / tv : stale-while-revalidate
  *   - icons / statics: cache-first
  */
-const VERSION = 'sultrix-pwa-v2.2.40';
+const VERSION = 'sultrix-pwa-v2.2.41';
 const APP_SHELL = [
   '/',
   '/manifest.json',
@@ -21,7 +21,14 @@ const APP_SHELL = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(VERSION).then((cache) => cache.addAll(APP_SHELL))
+    // Each file is fetched past the browser's HTTP cache (GitHub Pages sends max-age=600): a user who opened the app within ten minutes before a
+    // release must not get the OLD files stored under the NEW version name. Any failure rejects, as addAll did, so a half-installed worker never takes over.
+    caches.open(VERSION).then((cache) => Promise.all(APP_SHELL.map((u) =>
+      fetch(new Request(u, { cache: 'reload' })).then((r) => {
+        if (!r.ok) throw new Error('precache ' + u + ' ' + r.status);
+        return cache.put(u, r);
+      })
+    )))
       .then(() => self.skipWaiting())
   );
 });
@@ -40,6 +47,9 @@ self.addEventListener('fetch', (event) => {
 
   // Never intercept mutating endpoints — they must hit the network.
   if (req.method !== 'GET') return;
+
+  // The app's own update check (manifest.json?v=<time>) and the worker script must always come from the network: a cached copy would hide a new release.
+  if (url.pathname === '/sw.js' || (url.pathname === '/manifest.json' && url.searchParams.has('v'))) return;
 
   // PWA API: network-first, cached only for offline safe-view.
   if (url.pathname.startsWith('/api/pwa/')) {
@@ -79,7 +89,7 @@ async function networkFirst(req, cacheName) {
 async function staleWhileRevalidate(req, cacheName) {
   const cache = await caches.open(VERSION);
   const cached = await cache.match(req);
-  const networkPromise = fetch(req).then((fresh) => {
+  const networkPromise = fetch(req, { cache: 'no-cache' }).then((fresh) => {          // revalidate with the server (a cheap 304), never from the HTTP cache
     if (fresh && fresh.status === 200) cache.put(req, fresh.clone());
     return fresh;
   }).catch(() => null);

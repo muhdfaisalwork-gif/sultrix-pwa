@@ -153,12 +153,15 @@
   // more copy-pasting random trycloudflare URLs on every bot restart.
   // The manual URL paste is still available as a fallback (for testnet
   // setups, debugging, etc.).
-  function showConnectWizard() {
+  // `force` shows the wizard even when a saved address exists: that address
+  // is stale (the bot's quick-tunnel address changes at every desktop restart)
+  // and the customer must not be left with no way to reconnect.
+  function showConnectWizard(force) {
     const isPublic = /sultrixtrade\.com|github\.io/.test(location.host);
     const wiz = document.getElementById('connectWizard');
     if (!wiz) return;
     if (!isPublic) { wiz.hidden = true; return; }
-    if (API_BASE) { wiz.hidden = true; return; }
+    if (API_BASE && !force) { wiz.hidden = true; return; }
     wiz.hidden = false;
     // On a public host with no bot connected, the login form is useless
     // (it always returns 405). Hide it so the user is forced through
@@ -310,6 +313,55 @@
   // live tunnel URL. The user only ever needs to remember their license
   // key — never a URL.
   const RELAY_URL = 'https://sultrix-relay.muhd-faisal-work.workers.dev';
+
+  // An address that comes from the relay (not typed by the user) is only
+  // trusted when it is https and on a Cloudflare quick-tunnel / Sultrix host.
+  // The app later sends the licence key to this address, so a wrong relay
+  // answer must never point it somewhere else.
+  function isTrustedTunnel(raw) {
+    try {
+      const u = new URL(String(raw || ''));
+      if (u.protocol !== 'https:' || u.username || u.password) return false;
+      const h = u.hostname.toLowerCase();
+      return /^[a-z0-9-]+(\.[a-z0-9-]+)*\.(trycloudflare\.com|sultrixtrade\.com)$/.test(h);
+    } catch (_) { return false; }
+  }
+
+  // Save a new bot address and reload. Does nothing if the address is not
+  // trusted. Returns true when a reload was started.
+  function saveApiBase(url) {
+    if (!isTrustedTunnel(String(url || '').trim())) return false;
+    // origin only: drops any path, query, fragment or port from the relay answer
+    const clean = new URL(String(url).trim()).origin;
+    try { localStorage.setItem(STORAGE.API_BASE, clean); } catch (_) { return false; }
+    rememberEndpoint(clean);
+    setTimeout(() => location.reload(), 300);
+    return true;
+  }
+
+  // Reload-loop guard: at most one automatic address switch per 60 seconds
+  // per browser tab.
+  function mayAutoReconnect() {
+    try {
+      const last = +(sessionStorage.getItem('sx.autoReconnectAt') || 0);
+      if (Date.now() - last < 60000) return false;
+      sessionStorage.setItem('sx.autoReconnectAt', String(Date.now()));
+    } catch (_) { return false; }
+    return true;
+  }
+
+  // Ask the relay for the current bot address; returns the address or ''.
+  async function relayAddressFor(key) {
+    try {
+      const rr = await fetch(RELAY_URL + '/api/bot/lookup?license_key=' + encodeURIComponent(key), {
+        method: 'GET', mode: 'cors', headers: { 'Accept': 'application/json' },
+      });
+      const rd = await rr.json().catch(() => ({}));
+      if (rr.ok && rd.ok && rd.tunnel_url) return String(rd.tunnel_url).replace(/\/$/, '');
+    } catch (_) { /* relay unreachable */ }
+    return '';
+  }
+
   async function lookupByLicenseKey(rawKey) {
     const key = String(rawKey || '').trim();
     if (!key) { setConnectStatus('Enter your license key first', 'err'); return; }
@@ -332,13 +384,15 @@
       }
       const tunnelUrl = (data.tunnel_url || '').replace(/\/$/, '');
       if (!tunnelUrl) { setConnectStatus('Relay returned no URL', 'err'); return; }
+      if (!isTrustedTunnel(tunnelUrl)) { setConnectStatus('Relay returned an address that is not a Sultrix tunnel — not connecting.', 'err'); return; }
       // Also save the key so the PWA can re-lookup next time without the
       // user re-entering it.
       try { localStorage.setItem('sx.savedLicenseKey', key); } catch (_) {}
-      setConnectStatus('Found your bot at ' + tunnelUrl + ' — connecting…', 'ok');
+      const origin = new URL(tunnelUrl).origin;
+      setConnectStatus('Found your bot at ' + origin + ' — connecting…', 'ok');
       // Now treat the discovered URL as the api_base and run the normal
       // connect probe (validates /api/pwa/status before persisting).
-      tryConnect(tunnelUrl);
+      tryConnect(origin);
     } catch (e) {
       setConnectStatus('Could not reach the relay. Check your network and try again.', 'err');
     }
@@ -362,12 +416,14 @@
         if (rr.ok && rd.ok && rd.tunnel_url) {
           const tunnelUrl = String(rd.tunnel_url).replace(/\/$/, '');
           try { localStorage.setItem('sx.savedLicenseKey', licenseKey); } catch (_) {}
-          saveApiBase(tunnelUrl);
           // saveApiBase reloads, so the rest of login() won't run on
           // this path — the page will reload and the user will be
-          // authenticated against the discovered bot.
-          setConnectStatus('Found your bot at ' + tunnelUrl + ' — connecting…', 'ok');
-          return;
+          // authenticated against the discovered bot. An address that is
+          // not a trusted tunnel is ignored and falls through to the wizard.
+          if (saveApiBase(tunnelUrl)) {
+            setConnectStatus('Found your bot at ' + tunnelUrl + ' — connecting…', 'ok');
+            return;
+          }
         }
         // Relay said no — fall through to the wizard so the user can
         // see the "No bot found" hint + paste a URL manually.
@@ -408,8 +464,22 @@
       const isMethodNotAllowed = e.status === 405;
       const isAuthMissing = e.status === 401 || e.status === 403;
       const isServerError = e.status >= 500;
+      // Saved address is stale (tunnel address changes at every desktop
+      // restart): ask the relay for the current one once, then switch.
+      if (isPublic && API_BASE && (isNoBackend || isServerError) && licenseKey && licenseKey.length >= 6) {
+        const fresh = await relayAddressFor(licenseKey);
+        if (fresh && fresh !== API_BASE && isTrustedTunnel(fresh) && mayAutoReconnect()) {
+          try { localStorage.setItem('sx.savedLicenseKey', licenseKey); } catch (_) {}
+          if (saveApiBase(fresh)) {
+            $('#loginErr').textContent = 'Your bot moved to a new address — reconnecting…';
+            return;
+          }
+        }
+      }
       if (isPublic && (isNoBackend || isMethodNotAllowed || isAuthMissing || isServerError)) {
-        showConnectWizard();
+        // Force only when the saved address does not answer; a reachable bot
+        // with a wrong key keeps its normal login form.
+        showConnectWizard(isNoBackend || isServerError);
         // Scroll the connect wizard into view so the user immediately
         // sees it instead of just a small error text.
         setTimeout(() => {

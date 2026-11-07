@@ -1058,21 +1058,47 @@
   // typed. Updates are looked for at launch, whenever the app comes back to the front, when the phone gets its connection back, and every 30
   // minutes, plus a direct check of manifest.json for browsers that are slow to refresh a worker (iOS home-screen apps).
   const UPDATE_CHECK_MS = 30 * 60 * 1000;
-  const hadController = !!(navigator.serviceWorker && navigator.serviceWorker.controller);   // false on the very first visit: nothing to replace
+  let hadController = !!(navigator.serviceWorker && navigator.serviceWorker.controller);   // false on the very first visit: nothing to replace
   let swReg = null;
   let updatePending = false;
+  let lastReloadAt = 0;                                      // in-memory twin of the sessionStorage lock, for browsers where storage throws
+  let inflight = 0;                                          // user actions (not GET) still travelling to the server
+  let deferTimer = null;
+  let deferSince = 0;
+  const DEFER_MAX_MS = 30000;                                // a hung request must not block updates for ever
+  const _fetch = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    const m = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+    if (m === 'GET' || m === 'HEAD') return _fetch(input, init);
+    inflight++;
+    return _fetch(input, init).finally(() => { inflight = Math.max(0, inflight - 1); });
+  };
   const typingNow = () => { const a = document.activeElement; return !!a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && String(a.value || '') !== ''; };
   function reloadForUpdate() {
+    const now = Date.now();
     try {
-      const last = Number(sessionStorage.getItem('sx.updReload') || 0);
-      if (Date.now() - last < 60000) return;                 // never a reload loop
-      sessionStorage.setItem('sx.updReload', String(Date.now()));
-    } catch (_) {}
+      const last = Math.max(lastReloadAt, Number(sessionStorage.getItem('sx.updReload') || 0));
+      if (now - last < 60000) { updatePending = false; return; }   // never a reload loop
+      sessionStorage.setItem('sx.updReload', String(now));
+    } catch (_) {
+      if (now - lastReloadAt < 60000) { updatePending = false; return; }
+    }
+    lastReloadAt = now;
+    updatePending = false;
     location.reload();
   }
   function applyUpdateWhenSafe() {
-    if (document.hidden || !typingNow()) reloadForUpdate();
-    else updatePending = true;                               // retried as soon as the user leaves the field or the page
+    if (inflight > 0) {                                      // a chat message or bot action is still being sent: wait for it (at most 30 s)
+      deferSince = deferSince || Date.now();
+      if (Date.now() - deferSince < DEFER_MAX_MS) {
+        updatePending = true;
+        if (!deferTimer) deferTimer = setTimeout(() => { deferTimer = null; if (updatePending) applyUpdateWhenSafe(); }, 2000);
+        return;
+      }
+    }
+    deferSince = 0;
+    if (!typingNow()) reloadForUpdate();                     // never over a half-typed message, also not while the app is in the background
+    else updatePending = true;                               // retried as soon as the user leaves the field
   }
   async function versionCheck() {
     try {
@@ -1086,12 +1112,15 @@
     versionCheck();
   }
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) applyUpdateWhenSafe(); });
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hadController) applyUpdateWhenSafe();
+      else hadController = true;                             // the first worker taking over a first visit is not an update; every later change is
+    });
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) { if (updatePending) reloadForUpdate(); } else checkForUpdate();
+      if (document.hidden) { if (updatePending) applyUpdateWhenSafe(); } else checkForUpdate();
     });
     document.addEventListener('focusout', () => {
-      if (updatePending) setTimeout(() => { if (!typingNow()) reloadForUpdate(); }, 500);
+      if (updatePending) setTimeout(() => { if (updatePending) applyUpdateWhenSafe(); }, 500);
     });
     window.addEventListener('online', checkForUpdate);
     setInterval(checkForUpdate, UPDATE_CHECK_MS);
@@ -1100,7 +1129,7 @@
 
   // The worker must register even if init() stops early; registering twice is harmless.
   const registerWorker = () => {
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').then((r) => { swReg = r; checkForUpdate(); }).catch(() => {});
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then((r) => { swReg = r; checkForUpdate(); }).catch(() => {});
   };
   if (document.readyState === 'complete') registerWorker(); else window.addEventListener('load', registerWorker);
 

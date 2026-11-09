@@ -7,7 +7,7 @@
  *   - charts / tv : stale-while-revalidate
  *   - icons / statics: cache-first
  */
-const VERSION = 'sultrix-pwa-v2.2.42';
+const VERSION = 'sultrix-pwa-v2.2.54';
 const APP_SHELL = [
   '/',
   '/manifest.json',
@@ -79,8 +79,13 @@ async function networkFirst(req, cacheName) {
     if (fresh && fresh.status === 200) cache.put(req, fresh.clone());
     return fresh;
   } catch (err) {
-    const cached = await cache.match(req);
-    if (cached) return cached;
+    // Only serve cached fallback when the device itself is offline; if online and a cross-origin
+    // trycloudflare tunnel failed, return 503 so app.js detects the tunnel change and queries the relay.
+    const isCrossOrigin = new URL(req.url).origin !== self.location.origin;
+    if (!isCrossOrigin) {
+      const cached = await cache.match(req);
+      if (cached) return cached;
+    }
     return new Response(JSON.stringify({ error: 'offline', cached: false }),
       { status: 503, headers: { 'Content-Type': 'application/json' } });
   }

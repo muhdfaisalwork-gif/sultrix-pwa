@@ -24,7 +24,7 @@
   };
   const POLL_MS = 12_000;        // home refresh
   const SLOW_POLL_MS = 45_000;   // agents / alerts
-  const BUILD = '2.2.42';
+  const BUILD = '2.2.54';
 
   // ── State ────────────────────────────────────────
   const state = {
@@ -967,6 +967,19 @@
       state.lastFetch = Date.now();
     } catch (e) {
       if (e.status === 401) { logout(); return; }
+      try {
+        const savedKey = localStorage.getItem('sx.savedLicenseKey');
+        if (API_BASE && (e.status === 0 || e.status === 503 || e.status >= 500 || e.message === 'network_unreachable') && savedKey && savedKey.length >= 6) {
+          const fresh = await relayAddressFor(savedKey);
+          if (fresh && fresh !== API_BASE && isTrustedTunnel(fresh) && mayAutoReconnect()) {
+            try { localStorage.removeItem(STORAGE.TOKEN); } catch (_) {}
+            if (saveApiBase(fresh)) {
+              setConn('updating', 'Bot tunnel updated — reconnecting…');
+              return;
+            }
+          }
+        }
+      } catch (_) {}
       setConn('offline', 'Offline — showing cached data');
     }
   }
@@ -1035,8 +1048,18 @@
     wireConnectWizard();
     showConnectWizard();
 
-    // Restore session
-    if (!tryRestore()) showLogin();
+    // Restore session (or complete pending license login after tunnel discovery reload)
+    if (!tryRestore()) {
+      showLogin();
+      try {
+        const savedKey = localStorage.getItem('sx.savedLicenseKey');
+        if (API_BASE && savedKey && savedKey.length >= 6) {
+          const lf = document.getElementById('licenseKey');
+          if (lf && !lf.value) lf.value = savedKey;
+          setTimeout(() => login(savedKey), 150);
+        }
+      } catch (_) {}
+    }
 
     // Events
     $('#loginBtn').addEventListener('click', () => login($('#licenseKey').value.trim()));

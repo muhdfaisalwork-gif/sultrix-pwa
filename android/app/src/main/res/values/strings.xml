@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Sultrix</string>
+    <string name="title_activity_main">Sultrix</string>
+    <string name="package_name">com.sultrixtrade.app</string>
+    <string name="custom_url_scheme">com.sultrixtrade.app</string>
+</resources>

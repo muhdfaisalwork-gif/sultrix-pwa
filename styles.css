@@ -210,7 +210,7 @@ button {
 .login {
   min-height: 100vh;
   display: flex; align-items: center; justify-content: center;
-  padding: 24px;
+  padding: calc(24px + var(--safe-top)) 24px calc(24px + var(--safe-bottom));
   background:
     radial-gradient(circle at 50% 0%, var(--blue-soft) 0%, transparent 60%),
     var(--bg);

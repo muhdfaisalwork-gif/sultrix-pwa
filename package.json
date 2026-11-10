@@ -1,0 +1,41 @@
+{
+  "name": "sultrix-mobile",
+  "version": "2.2.54",
+  "description": "Sultrix Native Mobile Application (Android & iOS) and Trading Companion",
+  "main": "app.js",
+  "scripts": {
+    "build": "python deploy.py build",
+    "prepare:www": "node scripts/prepare_www.js",
+    "cap:sync": "npm run prepare:www && cap sync",
+    "cap:android": "npm run prepare:www && cap run android",
+    "cap:ios": "npm run prepare:www && cap run ios",
+    "cap:doctor": "cap doctor",
+    "build:android": "node scripts/build_android.js"
+  },
+  "keywords": [
+    "sultrix",
+    "trading",
+    "crypto",
+    "forex",
+    "stocks",
+    "android",
+    "ios",
+    "capacitor"
+  ],
+  "author": "SultrixTrade",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@capacitor/app": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/haptics": "^7.0.0",
+    "@capacitor/network": "^7.0.0",
+    "@capacitor/preferences": "^7.0.0",
+    "@capacitor/splash-screen": "^7.0.0",
+    "@capacitor/status-bar": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/cli": "^7.0.0",
+    "@capacitor/ios": "^7.0.0"
+  }
+}

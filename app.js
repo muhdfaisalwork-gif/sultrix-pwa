@@ -73,6 +73,66 @@
     toast._t = setTimeout(() => t.classList.remove('show'), 3500);
   }
 
+  // ── Capacitor Native Bridge ───────────────────────
+  const isCapacitorNative = () => {
+    try {
+      return !!(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform());
+    } catch (_) {
+      return false;
+    }
+  };
+  const isNative = isCapacitorNative();
+  const CapPlugins = (window.Capacitor && window.Capacitor.Plugins) ? window.Capacitor.Plugins : {};
+
+  function triggerHaptic(type = 'light') {
+    if (!isNative || !CapPlugins.Haptics) return;
+    try {
+      if (type === 'warning' || type === 'error') {
+        CapPlugins.Haptics.notification({ type: 'WARNING' });
+      } else if (type === 'success') {
+        CapPlugins.Haptics.notification({ type: 'SUCCESS' });
+      } else {
+        CapPlugins.Haptics.impact({ style: 'LIGHT' });
+      }
+    } catch (_) {}
+  }
+
+  function initNativeBridge() {
+    if (!isNative) return;
+    // Dark status bar matching Sultrix theme
+    if (CapPlugins.StatusBar) {
+      try {
+        CapPlugins.StatusBar.setStyle({ style: 'DARK' });
+        CapPlugins.StatusBar.setBackgroundColor({ color: '#0B0E14' });
+      } catch (_) {}
+    }
+    // Android hardware back button handler
+    if (CapPlugins.App) {
+      try {
+        CapPlugins.App.addListener('backButton', () => {
+          if (state.tab && state.tab !== 'home') {
+            setActiveTab('home');
+          } else {
+            CapPlugins.App.exitApp();
+          }
+        });
+      } catch (_) {}
+    }
+    // Native network state listener
+    if (CapPlugins.Network) {
+      try {
+        CapPlugins.Network.addListener('networkStatusChange', (status) => {
+          if (status.connected) {
+            setConn('updating', 'Reconnecting…');
+            refreshAll();
+          } else {
+            setConn('offline', 'Offline — showing cached data');
+          }
+        });
+      } catch (_) {}
+    }
+  }
+
   function setConn(kind, msg) {
     state.conn = kind;
     const b = $('#banner');
@@ -157,7 +217,7 @@
   // is stale (the bot's quick-tunnel address changes at every desktop restart)
   // and the customer must not be left with no way to reconnect.
   function showConnectWizard(force) {
-    const isPublic = /sultrixtrade\.com|github\.io/.test(location.host);
+    const isPublic = isNative || /sultrixtrade\.com|github\.io/.test(location.host);
     const wiz = document.getElementById('connectWizard');
     if (!wiz) return;
     if (!isPublic) { wiz.hidden = true; return; }
@@ -298,7 +358,7 @@
       // works, no button click needed.
       try {
         const saved = localStorage.getItem('sx.savedLicenseKey');
-        const isPublic = /sultrixtrade\.com|github\.io/.test(location.host);
+        const isPublic = isNative || /sultrixtrade\.com|github\.io/.test(location.host);
         if (saved && isPublic && !API_BASE) {
           setTimeout(() => lookupByLicenseKey(saved), 600);
         }
@@ -401,7 +461,7 @@
   // ── Login / auth ─────────────────────────────────
   async function login(licenseKey) {
     $('#loginBtn').disabled = true; $('#loginErr').textContent = '';
-    const isPublic = /sultrixtrade\.com|github\.io/.test(location.host);
+    const isPublic = isNative || /sultrixtrade\.com|github\.io/.test(location.host);
     // ── Public host with no bot URL + license key provided: do the
     //    central-relay lookup FIRST so the user never sees "No bot
     //    connected" when they hit "Sign in with license". ─────────
@@ -454,8 +514,10 @@
       if (!state.readOnly) {
         await ensurePushSubscription();
       }
+      triggerHaptic('success');
       onLogin();
     } catch (e) {
+      triggerHaptic('error');
       let msg;
       // Public host with no backend: the PWA can't reach a dashboard. Show
       // the connect wizard for ANY non-success status — all of those mean
@@ -553,12 +615,14 @@
     return r;
   }
   function setActiveTab(tab) {
+    state.tab = tab;
     $$('.tabbar a').forEach(a => a.classList.toggle('active', a.dataset.tab === tab));
     $$('.tab-content').forEach(s => s.classList.toggle('active', s.dataset.tab === tab));
     if (tab) {
       const url = new URL(location.href); url.searchParams.set('route', tab);
       history.replaceState(null, '', url);
     }
+    triggerHaptic('light');
   }
   document.addEventListener('click', (e) => {
     const a = e.target.closest('a[data-tab]');
@@ -928,16 +992,20 @@
 
   // ── Commands ────────────────────────────────────
   async function runCommand(name) {
+    if (/halt|stop|emergency/i.test(name)) triggerHaptic('warning');
+    else triggerHaptic('light');
     const out = $('#cmdOutput');
     if (out) out.textContent = '> ' + name + '\n...';
     try {
       const r = await api('/api/pwa/commands', { method: 'POST', body: JSON.stringify({ command: name }) });
       if (out) out.textContent = (r && r.text) || JSON.stringify(r, null, 2);
       toast('Command executed', 'ok');
+      triggerHaptic('success');
       refreshAll();
     } catch (e) {
       if (out) out.textContent = '> ' + name + '\nERROR: ' + ((e.body && e.body.error) || e.message);
       toast('Command failed', 'error');
+      triggerHaptic('error');
     }
   }
 
@@ -1027,15 +1095,16 @@
   }
 
   function init() {
+    initNativeBridge();
     document.getElementById('verTag').textContent = 'v' + BUILD;
     try {      // the page just reloaded itself because a new version arrived: say so
       if (Date.now() - Number(sessionStorage.getItem('sx.updReload') || 0) < 15000) setTimeout(() => toast('Updated to v' + BUILD, 'ok'), 600);
     } catch (_) {}
     document.getElementById('acctVer').textContent = 'v' + BUILD;
     // Show the public-host banner when the PWA is being served from
-    // app.sultrixtrade.com or a github.io URL. Hidden on localhost / tunnel.
+    // app.sultrixtrade.com or a github.io URL. Hidden on native mobile & localhost / tunnel.
     try {
-      const isPublic = /sultrixtrade\.com|github\.io/.test(location.host);
+      const isPublic = !isNative && /sultrixtrade\.com|github\.io/.test(location.host);
       const banner = document.getElementById('publicHostBanner');
       if (banner && isPublic && !API_BASE) banner.hidden = false;
     } catch (_) {}
@@ -1091,8 +1160,13 @@
     window.addEventListener('online', () => { setConn('updating', 'Reconnecting…'); refreshAll(); });
     window.addEventListener('offline', () => setConn('offline', 'Offline — showing cached data'));
 
-    // Service worker
-    if ('serviceWorker' in navigator) {
+    // Hide native splash screen once UI is initialized
+    if (isNative && CapPlugins.SplashScreen) {
+      try { CapPlugins.SplashScreen.hide(); } catch (_) {}
+    }
+
+    // Service worker (browsers only, bypassed in native container)
+    if (!isNative && 'serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => {});
     }
   }
@@ -1103,7 +1177,7 @@
   const INSTALL_HIDE_DAYS = 7;
   let deferredInstall = null;
   let installHandled = false;   // set once the browser prompt fired, was used, or the app got installed: the manual-steps hint must not appear after that
-  const isStandalone = () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  const isStandalone = () => isNative || (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
   const isIos = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const installDismissed = () => { try { return Date.now() - Number(localStorage.getItem('sultrix_install_hidden') || 0) < INSTALL_HIDE_DAYS * 864e5; } catch (_) { return false; } };
   function showInstallBar(text, withButton) {
@@ -1222,7 +1296,7 @@
 
   // The worker must register even if init() stops early; registering twice is harmless.
   const registerWorker = () => {
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then((r) => { swReg = r; checkForUpdate(); }).catch(() => {});
+    if (!isNative && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then((r) => { swReg = r; checkForUpdate(); }).catch(() => {});
   };
   if (document.readyState === 'complete') registerWorker(); else window.addEventListener('load', registerWorker);
 

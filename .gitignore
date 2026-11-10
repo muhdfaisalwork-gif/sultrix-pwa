@@ -3,3 +3,27 @@ askpass.sh
 *.pem
 *.key
 .env
+
+# Dependencies & temporary web build
+node_modules/
+.wrangler/
+www/
+dist/
+
+# Android build artifacts
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/.idea/
+android/*.iml
+android/app/*.iml
+
+# iOS build artifacts
+ios/App/App.xcworkspace/xcuserdata/
+ios/App/Pods/
+ios/App/Podfile.lock
+ios/App/*.xcworkspace/xcuserdata/
+ios/App/*.xcodeproj/xcuserdata/
+ios/App/*.xcodeproj/project.xcworkspace/xcuserdata/
+

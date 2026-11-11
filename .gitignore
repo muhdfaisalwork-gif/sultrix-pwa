@@ -9,6 +9,10 @@ node_modules/
 .wrangler/
 www/
 dist/
+releases/
+*.apk
+*.aab
+*.ipa
 
 # Android build artifacts
 android/app/build/

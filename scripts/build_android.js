@@ -12,6 +12,13 @@ const ANDROID_DIR = path.join(ROOT, 'android');
 const IS_WINDOWS = process.platform === 'win32';
 const GRADLE_CMD = IS_WINDOWS ? 'gradlew.bat' : './gradlew';
 
+// Detect local JDK 21 if JAVA_HOME is not set
+const DEFAULT_JDK21 = 'C:\\Users\\Lucifer\\AppData\\Local\\Programs\\jdk-21\\jdk-21.0.4+7';
+if (!process.env.JAVA_HOME && fs.existsSync(DEFAULT_JDK21)) {
+  process.env.JAVA_HOME = DEFAULT_JDK21;
+  process.env.PATH = path.join(DEFAULT_JDK21, 'bin') + path.delimiter + process.env.PATH;
+}
+
 console.log('=== Sultrix Mobile: Android Build ===');
 
 // 1. Ensure www/ is prepared and synced
@@ -27,7 +34,7 @@ console.log('[2/3] Checking Java environment...');
 const javaCheck = spawnSync('java', ['-version'], { shell: true });
 if (javaCheck.status !== 0) {
   console.warn('\n[NOTE] Java JDK is not found in your local PATH.');
-  console.warn('To build locally on Windows, install OpenJDK 17 or 21 (e.g. `winget install Microsoft.OpenJDK.17`).');
+  console.warn('To build locally on Windows, install OpenJDK 21 (e.g. `winget install Microsoft.OpenJDK.21`).');
   console.warn('The automated GitHub Actions workflow will compile the APK and IPA on cloud runners automatically.\n');
   process.exit(0);
 }
@@ -42,11 +49,17 @@ if (!fs.existsSync(gradlewPath)) {
   process.exit(1);
 }
 
-const buildResult = spawnSync(gradlewPath, [target], { cwd: ANDROID_DIR, stdio: 'inherit', shell: true });
+const buildResult = spawnSync(IS_WINDOWS ? `call .\\${GRADLE_CMD}` : GRADLE_CMD, [target], { cwd: ANDROID_DIR, stdio: 'inherit', shell: true });
 if (buildResult.status === 0) {
   console.log('\n[SUCCESS] Android build completed!');
-  const apkDir = path.join(ANDROID_DIR, 'app', 'build', 'outputs', 'apk');
-  console.log(`APKs available in: ${apkDir}`);
+  const apkSrc = path.join(ANDROID_DIR, 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
+  const relDir = path.join(ROOT, 'releases');
+  if (fs.existsSync(apkSrc)) {
+    if (!fs.existsSync(relDir)) fs.mkdirSync(relDir, { recursive: true });
+    const apkDst = path.join(relDir, 'Sultrix-v2.2.54.apk');
+    fs.copyFileSync(apkSrc, apkDst);
+    console.log(`Standalone APK ready: ${apkDst} (${(fs.statSync(apkDst).size / 1024 / 1024).toFixed(2)} MB)`);
+  }
 } else {
   console.error('\n[ERROR] Gradle build failed with code ' + buildResult.status);
   process.exit(buildResult.status);

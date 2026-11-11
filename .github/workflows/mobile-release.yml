@@ -10,17 +10,18 @@ on:
 
 jobs:
   build-android:
+    # Real release signing requires an Android keystore and is not set up yet; this job produces unsigned artifacts.
     name: Build Android (APK & AAB)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21 (Temurin)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
       - name: Set up Node.js 20.x
         uses: actions/setup-node@v4
@@ -42,17 +43,20 @@ jobs:
           cd android
           ./gradlew assembleDebug --stacktrace
 
-      - name: Build Android Release APK & AAB
-        run: |
-          cd android
-          ./gradlew assembleRelease bundleRelease --stacktrace || true
-
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: Sultrix-Android-Debug
           path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: ignore
           retention-days: 14
+
+      - name: Build Android Release APK & AAB
+        continue-on-error: true
+        run: |
+          cd android
+          ./gradlew assembleRelease bundleRelease --stacktrace
 
       - name: Upload Release APK / Bundle (if generated)
         uses: actions/upload-artifact@v4
@@ -62,11 +66,15 @@ jobs:
           path: |
             android/app/build/outputs/apk/release/*.apk
             android/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: ignore
           retention-days: 14
 
   build-ios:
+    # Real release signing requires an Apple developer account and certificate and is not set up yet; this job produces unsigned artifacts.
     name: Build iOS (IPA & Archive)
     runs-on: macos-14
+    # Independent of Android result: no needs, executes even if Android fails or is cancelled
+    if: always()
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -90,32 +98,43 @@ jobs:
 
       - name: Build iOS Archive (Unsigned)
         run: |
+          mkdir -p build
           xcodebuild -workspace ios/App/App.xcworkspace \
             -scheme App \
             -configuration Release \
             -destination 'generic/platform=iOS' \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
             -archivePath build/App.xcarchive \
             archive
 
       - name: Package Unsigned IPA
+        if: always()
         run: |
-          mkdir -p build/Payload
-          cp -r build/App.xcarchive/Products/Applications/App.app build/Payload/
-          cd build
-          zip -r Sultrix-unsigned.ipa Payload
+          if [ -d "build/App.xcarchive/Products/Applications/App.app" ]; then
+            mkdir -p build/Payload
+            cp -r build/App.xcarchive/Products/Applications/App.app build/Payload/
+            cd build
+            zip -r Sultrix-unsigned.ipa Payload
+          else
+            echo "Notice: build/App.xcarchive/Products/Applications/App.app not found. Skipping IPA packaging."
+          fi
 
       - name: Upload iOS IPA Artifact
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: Sultrix-iOS-IPA
           path: build/Sultrix-unsigned.ipa
+          if-no-files-found: ignore
           retention-days: 14
 
       - name: Upload Xcode Archive
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: Sultrix-iOS-xcarchive
           path: build/App.xcarchive
+          if-no-files-found: ignore
           retention-days: 14

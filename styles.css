@@ -67,6 +67,7 @@ button {
 }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
 .brand-dot.idle { background: var(--text-mute); box-shadow: none; animation: none; }
+.brand-dot.updating, .brand-dot.warn { background: var(--yellow); box-shadow: 0 0 10px var(--yellow); }
 .brand-dot.error { background: var(--red); box-shadow: 0 0 10px var(--red); }
 
 .topbar-actions { display: flex; gap: 6px; }
@@ -292,7 +293,8 @@ button {
   padding: 6px;
   border-bottom: 1px solid var(--line);
 }
-.banner.error { background: var(--red-soft); color: var(--red); }
+.banner.error, .banner.offline { background: var(--red-soft); color: var(--red); }
+.banner.updating { background: var(--yellow-soft); color: var(--yellow); }
 .banner.ok { background: var(--green-soft); color: var(--green); }
 
 /* ── Toast ─────────────────────────────────────── */

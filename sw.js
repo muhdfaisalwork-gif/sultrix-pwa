@@ -7,11 +7,12 @@
  *   - charts / tv : stale-while-revalidate
  *   - icons / statics: cache-first
  */
-const VERSION = 'sultrix-pwa-v2.2.54';
+const VERSION = 'sultrix-pwa-v2.2.54c';
 const APP_SHELL = [
   '/',
   '/manifest.json',
   '/index.html',
+  '/conn_helpers.js',
   '/app.js',
   '/styles.css',
   '/assets/icons/icon-192.png',
@@ -71,10 +72,17 @@ self.addEventListener('fetch', (event) => {
   }
 });
 
+function fetchWithTimeout(req, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const opts = req.signal ? { signal: req.signal } : { signal: controller.signal };
+  return fetch(req, opts).finally(() => clearTimeout(timer));
+}
+
 async function networkFirst(req, cacheName) {
   const cache = await caches.open(VERSION);
   try {
-    const fresh = await fetch(req);
+    const fresh = await fetchWithTimeout(req, 8000);
     // Only cache successful + JSON-shaped GETs.
     if (fresh && fresh.status === 200) cache.put(req, fresh.clone());
     return fresh;
@@ -94,7 +102,7 @@ async function networkFirst(req, cacheName) {
 async function staleWhileRevalidate(req, cacheName) {
   const cache = await caches.open(VERSION);
   const cached = await cache.match(req);
-  const networkPromise = fetch(req, { cache: 'no-cache' }).then((fresh) => {          // revalidate with the server (a cheap 304), never from the HTTP cache
+  const networkPromise = fetchWithTimeout(new Request(req, { cache: 'no-cache' }), 10000).then((fresh) => {          // revalidate with the server (a cheap 304), never from the HTTP cache
     if (fresh && fresh.status === 200) cache.put(req, fresh.clone());
     return fresh;
   }).catch(() => null);

@@ -5,7 +5,13 @@
   "bundledWebRuntime": false,
   "server": {
     "androidScheme": "https",
-    "cleartext": false
+    "cleartext": false,
+    "allowNavigation": [
+      "*.trycloudflare.com",
+      "*.sultrixtrade.com",
+      "sultrix-relay.muhd-faisal-work.workers.dev",
+      "*.tradingview.com"
+    ]
   },
   "android": {
     "allowMixedContent": true,

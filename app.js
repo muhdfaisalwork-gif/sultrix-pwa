@@ -35,6 +35,8 @@
     trialDaysLeft: null,
     lastFetch: 0,
     conn: 'live',                  // live | updating | offline
+    offlineSince: null,            // timestamp when connection was lost
+    botStatus: null,               // last known bot_status (e.g. 'RUNNING', 'ERROR')
     pos: [],
     posFilter: 'all',
     alertFilter: 'all',
@@ -118,27 +120,214 @@
         });
       } catch (_) {}
     }
-    // Native network state listener
+    // Native network state listener (WiFi <-> Cellular changes)
     if (CapPlugins.Network) {
       try {
         CapPlugins.Network.addListener('networkStatusChange', (status) => {
-          if (status.connected) {
-            setConn('updating', 'Reconnecting…');
-            refreshAll();
+          if (status && status.connected) {
+            handleResumeOrNetworkChange('capacitor-network-connected');
           } else {
-            setConn('offline', 'Offline — showing cached data');
+            setConn('offline');
           }
+        });
+      } catch (_) {}
+    }
+    // Capacitor App lifecycle events: phone comes back from sleep or background
+    if (CapPlugins.App) {
+      try {
+        CapPlugins.App.addListener('appStateChange', (appState) => {
+          if (appState && appState.isActive) {
+            handleResumeOrNetworkChange('capacitor-appState-active');
+          }
+        });
+        CapPlugins.App.addListener('resume', () => {
+          handleResumeOrNetworkChange('capacitor-app-resume');
         });
       } catch (_) {}
     }
   }
 
+  let lastResumeOrNetworkChangeAt = 0;
+  function handleResumeOrNetworkChange(reason) {
+    const now = Date.now();
+    // Debounce: ignore repeated events within 2 seconds to prevent flapping stampedes
+    if (now - lastResumeOrNetworkChangeAt < 2000) {
+      return;
+    }
+    lastResumeOrNetworkChangeAt = now;
+    setConn('updating', 'Reconnecting…');
+    refreshAll();
+  }
+
+  // ── Pure connection & retry helpers (loaded via conn_helpers.js) ──
+  const computeRetryDelay = (typeof window !== 'undefined' && window.computeRetryDelay) || function (attempt, baseMs = 1500, maxMs = 30000, randomFn = Math.random) {
+    const n = Math.max(0, Math.floor(Number(attempt) || 0));
+    const base = Math.max(500, Number(baseMs) || 1500);
+    const max = Math.max(base, Number(maxMs) || 30000);
+    const exp = Math.min(max, base * Math.pow(2, Math.min(n, 10)));
+    const rnd = typeof randomFn === 'function' ? randomFn() : Math.random();
+    const jitterFactor = 0.2;
+    const jitter = (rnd * 2 - 1) * jitterFactor * exp;
+    return Math.max(500, Math.min(max, Math.round(exp + jitter)));
+  };
+
+  const formatConnectionStatus = (typeof window !== 'undefined' && window.formatConnectionStatus) || function (kind, offlineSinceTs, nowTs = Date.now()) {
+    if (kind === 'live' || kind === 'connected') return { kind: 'live', text: '', isLive: true };
+    if (kind === 'updating' || kind === 'reconnecting') return { kind: 'updating', text: 'Reconnecting to bot…', isLive: false };
+    const s = offlineSinceTs ? Math.max(1, Math.round(((Number(nowTs) || Date.now()) - Number(offlineSinceTs)) / 1000)) : null;
+    let relText = '';
+    if (s != null) {
+      if (s < 60) relText = s + 's ago';
+      else if (s < 3600) relText = Math.round(s / 60) + 'm ago';
+      else if (s < 86400) relText = Math.round(s / 3600) + 'h ago';
+      else relText = Math.round(s / 86400) + 'd ago';
+    }
+    const text = relText ? `Offline since ${relText} — showing cached data` : 'Offline — showing cached data';
+    return { kind: 'offline', text, isLive: false };
+  };
+
+  const isRetryableError = (typeof window !== 'undefined' && window.isRetryableError) || function (status, message) {
+    const s = Number(status) || 0;
+    const msg = String(message || '').toLowerCase();
+    if (s === 0) return true;
+    if (s === 502 || s === 503 || s === 504 || (s >= 520 && s <= 530) || s >= 500) return true;
+    if (msg.includes('network_unreachable') || msg.includes('timeout') || msg.includes('failed to fetch')) return true;
+    return false;
+  };
+
+  const shouldCheckRelay = (typeof window !== 'undefined' && window.shouldCheckRelay) || function (errorStatus, currentUrl, hasSavedKey, message) {
+    return Boolean(hasSavedKey && isRetryableError(errorStatus, message) && (!currentUrl || isTrustedTunnel(currentUrl)));
+  };
+
+  // Abortable fetch with configurable timeout (default 10s).
+  function fetchWithTimeout(url, opts = {}, timeoutMs = 10000) {
+    const ms = Math.max(1000, Number(timeoutMs) || 10000);
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try { controller.abort(new Error('timeout')); } catch (_) {}
+    }, ms);
+
+    const merged = Object.assign({}, opts);
+    if (merged.signal) {
+      const parentSignal = merged.signal;
+      if (parentSignal.aborted) {
+        clearTimeout(timer);
+        try { controller.abort(parentSignal.reason); } catch (_) {}
+      } else {
+        parentSignal.addEventListener('abort', () => {
+          clearTimeout(timer);
+          try { controller.abort(parentSignal.reason); } catch (_) {}
+        }, { once: true });
+      }
+    }
+    merged.signal = controller.signal;
+
+    return fetch(url, merged).catch((err) => {
+      if (timedOut || (err && (err.name === 'AbortError' || err.message === 'timeout'))) {
+        const timeoutErr = new Error('request_timeout');
+        timeoutErr.status = 0;
+        timeoutErr.cause = err;
+        throw timeoutErr;
+      }
+      throw err;
+    }).finally(() => {
+      clearTimeout(timer);
+    });
+  }
+
+  // Storage persistence helpers (mirrors to Capacitor Preferences when in native container)
+  function getSavedLicenseKey() {
+    try {
+      const k = localStorage.getItem('sx.savedLicenseKey');
+      if (k) return k.trim();
+    } catch (_) {}
+    return '';
+  }
+
+  function persistSavedLicenseKey(key) {
+    if (!key || typeof key !== 'string') return;
+    const clean = key.trim();
+    if (clean.length < 6) return;
+    try { localStorage.setItem('sx.savedLicenseKey', clean); } catch (_) {}
+    if (isNative && CapPlugins.Preferences) {
+      try { CapPlugins.Preferences.set({ key: 'sx.savedLicenseKey', value: clean }); } catch (_) {}
+    }
+  }
+
+  function persistSessionToken(token) {
+    if (!token) {
+      try { localStorage.removeItem(STORAGE.TOKEN); } catch (_) {}
+      if (isNative && CapPlugins.Preferences) {
+        try { CapPlugins.Preferences.remove({ key: STORAGE.TOKEN }); } catch (_) {}
+      }
+      return;
+    }
+    try { localStorage.setItem(STORAGE.TOKEN, token); } catch (_) {}
+    if (isNative && CapPlugins.Preferences) {
+      try { CapPlugins.Preferences.set({ key: STORAGE.TOKEN, value: token }); } catch (_) {}
+    }
+  }
+
+  let offlineTicker = null;
+  function startOfflineTicker() {
+    if (offlineTicker) return;
+    offlineTicker = setInterval(() => {
+      if (state.conn === 'offline' && state.offlineSince) {
+        const formatted = formatConnectionStatus('offline', state.offlineSince);
+        const b = $('#banner');
+        if (b && !b.hidden) b.textContent = formatted.text;
+      } else {
+        stopOfflineTicker();
+      }
+    }, 5000);
+  }
+  function stopOfflineTicker() {
+    if (offlineTicker) clearInterval(offlineTicker);
+    offlineTicker = null;
+  }
+
   function setConn(kind, msg) {
     state.conn = kind;
+    if (kind === 'live') {
+      state.offlineSince = null;
+      stopOfflineTicker();
+    } else {
+      if (!state.offlineSince) state.offlineSince = Date.now();
+      if (kind === 'offline') startOfflineTicker();
+      else stopOfflineTicker();
+    }
+
+    const formatted = formatConnectionStatus(kind, state.offlineSince);
+    const displayText = msg || formatted.text;
+
+    // Banner update
     const b = $('#banner');
-    if (kind === 'live' || !msg) { b.hidden = true; return; }
-    b.hidden = false; b.className = 'banner ' + kind;
-    b.textContent = msg;
+    if (b) {
+      if (formatted.isLive || !displayText) {
+        b.hidden = true;
+      } else {
+        b.hidden = false;
+        b.className = 'banner ' + formatted.kind;
+        b.textContent = displayText;
+      }
+    }
+
+    // Status dot update: ensure stale data is never shown as live
+    const dot = $('#statusDot');
+    if (dot) {
+      dot.classList.remove('idle', 'error', 'updating', 'warn');
+      if (formatted.isLive) {
+        if (state.botStatus && state.botStatus !== 'RUNNING') {
+          dot.classList.add(state.botStatus === 'ERROR' ? 'error' : 'idle');
+        }
+      } else if (formatted.kind === 'updating') {
+        dot.classList.add('updating');
+      } else {
+        dot.classList.add('error');
+      }
+    }
   }
 
   // ── API client ───────────────────────────────────
@@ -172,24 +361,30 @@
     } catch (_) {}
     return '';
   }
-  const API_BASE = _resolveApiBase();
+  let API_BASE = _resolveApiBase();
+  function getApiBase() {
+    return API_BASE || '';
+  }
+
   async function api(path, opts) {
     opts = opts || {};
+    const base = getApiBase();
     // If path is absolute (http://... or https://...) use as-is.
     // Otherwise prepend API_BASE if set, else use path as relative URL.
     const url = /^https?:/i.test(path)
       ? path
-      : (API_BASE ? API_BASE + (path.startsWith('/') ? path : '/' + path) : path);
+      : (base ? base + (path.startsWith('/') ? path : '/' + path) : path);
     const headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
     if (state.session) headers['Authorization'] = 'Bearer ' + state.session;
+    const timeoutMs = opts.timeout || 10000;
     let res;
     try {
-      res = await fetch(url, Object.assign({ method: opts.method || 'GET', headers }, opts));
+      res = await fetchWithTimeout(url, Object.assign({ method: opts.method || 'GET', headers }, opts), timeoutMs);
     } catch (e) {
-      // Network failure (DNS, CORS, server down, wrong origin) — surface a
-      // clear error so the PWA can show "install the desktop app" instead of
-      // a generic "api 0" message.
-      const err = new Error('network_unreachable');
+      // Network failure or timeout (DNS, CORS, timeout, server down) — surface a
+      // clear error so reconnect/fallback mechanisms trigger immediately.
+      const isTimeout = e.message === 'request_timeout';
+      const err = new Error(isTimeout ? 'request_timeout' : 'network_unreachable');
       err.status = 0;
       err.cause = e;
       throw err;
@@ -299,14 +494,16 @@
     try {
       // Probe the bot with a known endpoint. Any 2xx/3xx/4xx response proves
       // the tunnel is reachable; only network failures abort.
-      const probe = await fetch(url.replace(/\/$/, '') + '/api/pwa/status', { method: 'GET', mode: 'cors' });
+      const probe = await fetchWithTimeout(url.replace(/\/$/, '') + '/api/pwa/status', { method: 'GET', mode: 'cors' }, 8000);
       if (probe.status === 0) throw new Error('No response');
       // Persist
       try { localStorage.setItem(STORAGE.API_BASE, url); } catch (_) {}
       rememberEndpoint(url);
+      API_BASE = url;
+      if (isNative && CapPlugins.Preferences) {
+        try { CapPlugins.Preferences.set({ key: STORAGE.API_BASE, value: url }); } catch (_) {}
+      }
       setConnectStatus('Connected! Loading app…', 'ok');
-      // Now retry the login flow with the new base
-      const licenseKey = ($('#licenseKey') && $('#licenseKey').value) || '';
       // Force re-eval of API_BASE by reloading — cleanest, no half-state
       setTimeout(() => location.reload(), 400);
     } catch (e) {
@@ -387,15 +584,23 @@
     } catch (_) { return false; }
   }
 
-  // Save a new bot address and reload. Does nothing if the address is not
-  // trusted. Returns true when a reload was started.
-  function saveApiBase(url) {
+  // Save a new bot address and optionally reload. Does nothing if the address is not
+  // trusted. Returns true when the address was saved.
+  function saveApiBase(url, shouldReload = false) {
     if (!isTrustedTunnel(String(url || '').trim())) return false;
     // origin only: drops any path, query, fragment or port from the relay answer
     const clean = new URL(String(url).trim()).origin;
     try { localStorage.setItem(STORAGE.API_BASE, clean); } catch (_) { return false; }
     rememberEndpoint(clean);
-    setTimeout(() => location.reload(), 300);
+    API_BASE = clean;
+    if (isNative && CapPlugins.Preferences) {
+      try { CapPlugins.Preferences.set({ key: STORAGE.API_BASE, value: clean }); } catch (_) {}
+    }
+    const baseEl = document.getElementById('apiBase');
+    if (baseEl) baseEl.textContent = clean || '(same-origin)';
+    if (shouldReload) {
+      setTimeout(() => location.reload(), 300);
+    }
     return true;
   }
 
@@ -413,12 +618,12 @@
   // Ask the relay for the current bot address; returns the address or ''.
   async function relayAddressFor(key) {
     try {
-      const rr = await fetch(RELAY_URL + '/api/bot/lookup?license_key=' + encodeURIComponent(key), {
+      const rr = await fetchWithTimeout(RELAY_URL + '/api/bot/lookup?license_key=' + encodeURIComponent(key), {
         method: 'GET', mode: 'cors', headers: { 'Accept': 'application/json' },
-      });
+      }, 8000);
       const rd = await rr.json().catch(() => ({}));
       if (rr.ok && rd.ok && rd.tunnel_url) return String(rd.tunnel_url).replace(/\/$/, '');
-    } catch (_) { /* relay unreachable */ }
+    } catch (_) { /* relay unreachable or timed out */ }
     return '';
   }
 
@@ -428,11 +633,11 @@
     if (key.length < 6) { setConnectStatus('License key looks too short', 'err'); return; }
     setConnectStatus('Asking central relay where your bot is…', 'info');
     try {
-      const r = await fetch(RELAY_URL + '/api/bot/lookup?license_key=' + encodeURIComponent(key), {
+      const r = await fetchWithTimeout(RELAY_URL + '/api/bot/lookup?license_key=' + encodeURIComponent(key), {
         method: 'GET',
         mode: 'cors',
         headers: { 'Accept': 'application/json' },
-      });
+      }, 8000);
       const data = await r.json().catch(() => ({}));
       if (!r.ok || !data.ok) {
         if (r.status === 404) {
@@ -446,8 +651,8 @@
       if (!tunnelUrl) { setConnectStatus('Relay returned no URL', 'err'); return; }
       if (!isTrustedTunnel(tunnelUrl)) { setConnectStatus('Relay returned an address that is not a Sultrix tunnel — not connecting.', 'err'); return; }
       // Also save the key so the PWA can re-lookup next time without the
-      // user re-entering it.
-      try { localStorage.setItem('sx.savedLicenseKey', key); } catch (_) {}
+      // user re-entering it across app restarts.
+      persistSavedLicenseKey(key);
       const origin = new URL(tunnelUrl).origin;
       setConnectStatus('Found your bot at ' + origin + ' — connecting…', 'ok');
       // Now treat the discovered URL as the api_base and run the normal
@@ -468,19 +673,19 @@
     if (isPublic && !API_BASE && licenseKey && licenseKey.length >= 6) {
       try {
         setConnectStatus('Looking up your bot via central relay…', 'info');
-        const rr = await fetch(RELAY_URL + '/api/bot/lookup?license_key=' + encodeURIComponent(licenseKey), {
+        const rr = await fetchWithTimeout(RELAY_URL + '/api/bot/lookup?license_key=' + encodeURIComponent(licenseKey), {
           method: 'GET', mode: 'cors',
           headers: { 'Accept': 'application/json' },
-        });
+        }, 8000);
         const rd = await rr.json().catch(() => ({}));
         if (rr.ok && rd.ok && rd.tunnel_url) {
           const tunnelUrl = String(rd.tunnel_url).replace(/\/$/, '');
-          try { localStorage.setItem('sx.savedLicenseKey', licenseKey); } catch (_) {}
+          persistSavedLicenseKey(licenseKey);
           // saveApiBase reloads, so the rest of login() won't run on
           // this path — the page will reload and the user will be
           // authenticated against the discovered bot. An address that is
           // not a trusted tunnel is ignored and falls through to the wizard.
-          if (saveApiBase(tunnelUrl)) {
+          if (saveApiBase(tunnelUrl, true)) {
             setConnectStatus('Found your bot at ' + tunnelUrl + ' — connecting…', 'ok');
             return;
           }
@@ -502,14 +707,15 @@
       state.isDeveloper = !!r.is_developer;
       state.trialDaysLeft = r.trial_days_left;
       state.readOnly = !!r.read_only;
-      // Sentinel fingerprint only — never store the raw key.
-      if (licenseKey) {
+      // Persist the license key and token so they survive app restarts
+      if (licenseKey && licenseKey.length >= 6) {
+        persistSavedLicenseKey(licenseKey);
         const fingerprint = await fingerprintLicense(licenseKey);
         try { localStorage.setItem(STORAGE.LICENSE_HASH, fingerprint); } catch (_) {}
       } else {
         try { localStorage.removeItem(STORAGE.LICENSE_HASH); } catch (_) {}
       }
-      try { localStorage.setItem(STORAGE.TOKEN, r.session_token); } catch (_) {}
+      persistSessionToken(r.session_token);
       // Schedule push subscription (only for paid tiers)
       if (!state.readOnly) {
         await ensurePushSubscription();
@@ -522,7 +728,7 @@
       // Public host with no backend: the PWA can't reach a dashboard. Show
       // the connect wizard for ANY non-success status — all of those mean
       // "no live bot reachable" when the PWA is hosted on a static-only host.
-      const isNoBackend = e.message === 'network_unreachable' || e.status === 0;
+      const isNoBackend = e.message === 'network_unreachable' || e.message === 'request_timeout' || e.status === 0;
       const isMethodNotAllowed = e.status === 405;
       const isAuthMissing = e.status === 401 || e.status === 403;
       const isServerError = e.status >= 500;
@@ -531,8 +737,8 @@
       if (isPublic && API_BASE && (isNoBackend || isServerError) && licenseKey && licenseKey.length >= 6) {
         const fresh = await relayAddressFor(licenseKey);
         if (fresh && fresh !== API_BASE && isTrustedTunnel(fresh) && mayAutoReconnect()) {
-          try { localStorage.setItem('sx.savedLicenseKey', licenseKey); } catch (_) {}
-          if (saveApiBase(fresh)) {
+          persistSavedLicenseKey(licenseKey);
+          if (saveApiBase(fresh, true)) {
             $('#loginErr').textContent = 'Your bot moved to a new address — reconnecting…';
             return;
           }
@@ -577,24 +783,48 @@
     return Array.from(new Uint8Array(buf)).slice(0, 6).map(b => b.toString(16).padStart(2, '0')).join('');
   }
   function logout() {
-    try { api('/api/pwa/session/logout', { method: 'POST' }); } catch (_) {}
+    try { api('/api/pwa/session/logout', { method: 'POST', timeout: 5000 }); } catch (_) {}
     state.session = null;
-    try { localStorage.removeItem(STORAGE.TOKEN); } catch (_) {}
+    persistSessionToken(null);
+    try { localStorage.removeItem('sx.savedLicenseKey'); } catch (_) {}
+    if (isNative && CapPlugins.Preferences) {
+      try { CapPlugins.Preferences.remove({ key: 'sx.savedLicenseKey' }); } catch (_) {}
+    }
     try { navigator.serviceWorker && navigator.serviceWorker.ready.then((r) => r.getSubscription()).then((s) => s && s.unsubscribe()); } catch (_) {}
   
-    // New logout logic
-    try { localStorage.removeItem('sx.savedLicenseKey'); } catch (_) {}
+    // Drop stored credentials
     try { STORAGE.LICENSE_HASH && localStorage.removeItem(STORAGE.LICENSE_HASH); } catch (_) {}
     try { 
-      if (navigator.serviceWorker.controller) {
+      if (navigator.serviceWorker && navigator.serviceWorker.controller) {
         navigator.serviceWorker.controller.postMessage({type: 'logout'});
       }
     } catch (_) {}
     try {
-      caches.keys().then(ks => ks.forEach(k => caches.delete(k)));
+      if (typeof caches !== 'undefined') {
+        caches.keys().then(ks => ks.forEach(k => caches.delete(k)));
+      }
     } catch (_) {}
   
     showLogin();
+  }
+
+  // Re-authenticate against a newly discovered tunnel using the saved key without full reload
+  async function reauthWithSavedKey(savedKey) {
+    if (!savedKey) throw new Error('no_saved_key');
+    const r = await api('/api/pwa/auth', {
+      method: 'POST',
+      body: JSON.stringify({ license_key: savedKey }),
+      timeout: 10000,
+    });
+    state.session = r.session_token;
+    state.plan = r.plan || r.tier || 'free';
+    state.isTrial = !!r.is_trial;
+    state.isDeveloper = !!r.is_developer;
+    state.trialDaysLeft = r.trial_days_left;
+    state.readOnly = !!r.read_only;
+    persistSessionToken(r.session_token);
+    persistSavedLicenseKey(savedKey);
+    return r;
   }
 
   function onLogin() {
@@ -1009,19 +1239,41 @@
     }
   }
 
-  // ── Polling ─────────────────────────────────────
+  // ── Polling & Retry ─────────────────────────────
   let pollTimer = null, slowTimer = null;
+  let retryAttempt = 0;
+  let refreshInFlight = false;
+
+  function clearPollTimer() {
+    if (pollTimer) {
+      clearTimeout(pollTimer);
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  function scheduleNextRefresh(delayMs) {
+    clearPollTimer();
+    pollTimer = setTimeout(refreshAll, delayMs);
+  }
+
   function startPolling() {
     stopPolling();
-    pollTimer = setInterval(refreshAll, POLL_MS);
+    scheduleNextRefresh(POLL_MS);
     slowTimer = setInterval(refreshSlow, SLOW_POLL_MS);
   }
+
   function stopPolling() {
-    if (pollTimer) clearInterval(pollTimer);
+    clearPollTimer();
     if (slowTimer) clearInterval(slowTimer);
-    pollTimer = slowTimer = null;
+    slowTimer = null;
+    retryAttempt = 0;
   }
+
   async function refreshAll() {
+    if (refreshInFlight) return;
+    refreshInFlight = true;
+    clearPollTimer();
     try {
       setConn('updating', 'Updating…');
       const [status, pnl, positions, markets] = await Promise.all([fetchStatus(), fetchPnl(), fetchPositions(), fetchMarkets()]);
@@ -1033,22 +1285,38 @@
       renderBotState(status);
       setConn('live', null);
       state.lastFetch = Date.now();
+      // Successful refresh: reset backoff and schedule next regular poll
+      retryAttempt = 0;
+      scheduleNextRefresh(POLL_MS);
     } catch (e) {
       if (e.status === 401) { logout(); return; }
       try {
-        const savedKey = localStorage.getItem('sx.savedLicenseKey');
-        if (API_BASE && (e.status === 0 || e.status === 503 || e.status >= 500 || e.message === 'network_unreachable') && savedKey && savedKey.length >= 6) {
+        const savedKey = localStorage.getItem('sx.savedLicenseKey') || '';
+        const hasSavedKey = Boolean(savedKey && savedKey.length >= 6);
+        const errStatus = (e && typeof e.status !== 'undefined') ? e.status : 0;
+        const errMsg = (e && e.message) ? e.message : '';
+
+        // Query central relay when error is retryable and relay check is approved
+        if (isRetryableError(errStatus, errMsg) && shouldCheckRelay(errStatus, API_BASE, hasSavedKey, errMsg)) {
           const fresh = await relayAddressFor(savedKey);
           if (fresh && fresh !== API_BASE && isTrustedTunnel(fresh) && mayAutoReconnect()) {
             try { localStorage.removeItem(STORAGE.TOKEN); } catch (_) {}
             if (saveApiBase(fresh)) {
               setConn('updating', 'Bot tunnel updated — reconnecting…');
+              retryAttempt = 0;
+              scheduleNextRefresh(500);
               return;
             }
           }
         }
       } catch (_) {}
       setConn('offline', 'Offline — showing cached data');
+      // Failed refresh: exponential backoff with jitter and cap, never stops retrying
+      retryAttempt++;
+      const nextDelay = computeRetryDelay(retryAttempt);
+      scheduleNextRefresh(nextDelay);
+    } finally {
+      refreshInFlight = false;
     }
   }
   async function refreshSlow() {
@@ -1157,7 +1425,7 @@
     $('#chartTf').addEventListener('change', (e) => { state.chart.tf = e.target.value; updateChart(); });
 
     // Online/offline banner
-    window.addEventListener('online', () => { setConn('updating', 'Reconnecting…'); refreshAll(); });
+    window.addEventListener('online', () => { handleResumeOrNetworkChange('window-online'); });
     window.addEventListener('offline', () => setConn('offline', 'Offline — showing cached data'));
 
     // Hide native splash screen once UI is initialized

@@ -7,10 +7,8 @@
     "androidScheme": "https",
     "cleartext": false,
     "allowNavigation": [
-      "*.trycloudflare.com",
       "*.sultrixtrade.com",
-      "sultrix-relay.muhd-faisal-work.workers.dev",
-      "*.tradingview.com"
+      "sultrix-relay.muhd-faisal-work.workers.dev"
     ]
   },
   "android": {

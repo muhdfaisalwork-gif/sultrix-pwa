@@ -75,8 +75,12 @@ self.addEventListener('fetch', (event) => {
 function fetchWithTimeout(req, timeoutMs = 8000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  const opts = req.signal ? { signal: req.signal } : { signal: controller.signal };
-  return fetch(req, opts).finally(() => clearTimeout(timer));
+  // The request's own signal (user cancel) and the timeout both abort the same controller.
+  if (req.signal) {
+    if (req.signal.aborted) controller.abort();
+    else req.signal.addEventListener('abort', () => controller.abort(), { once: true });
+  }
+  return fetch(req, { signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
 async function networkFirst(req, cacheName) {

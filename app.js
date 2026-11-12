@@ -155,6 +155,7 @@
       return;
     }
     lastResumeOrNetworkChangeAt = now;
+    retryAttempt = 0;           // connectivity just changed: the next failure must not wait the maximum delay
     setConn('updating', 'Reconnecting…');
     refreshAll();
   }
@@ -1289,7 +1290,16 @@
       retryAttempt = 0;
       scheduleNextRefresh(POLL_MS);
     } catch (e) {
-      if (e.status === 401) { logout(); return; }
+      if (e.status === 401) {
+        // An expired or foreign session is not a reason to forget the licence: sign in again once with the saved key before logging out.
+        let renewed = false;
+        if (Date.now() - (window.__lastReauthAt || 0) > 60000) {      // at most one silent sign-in per minute, so a server that keeps refusing cannot cause a loop
+          window.__lastReauthAt = Date.now();
+          try { const k = localStorage.getItem('sx.savedLicenseKey') || ''; if (k.length >= 6) { await reauthWithSavedKey(k); renewed = true; } } catch (_) {}
+        }
+        if (renewed) { retryAttempt = 0; scheduleNextRefresh(500); return; }
+        logout(); return;
+      }
       try {
         const savedKey = localStorage.getItem('sx.savedLicenseKey') || '';
         const hasSavedKey = Boolean(savedKey && savedKey.length >= 6);
@@ -1297,12 +1307,17 @@
         const errMsg = (e && e.message) ? e.message : '';
 
         // Query central relay when error is retryable and relay check is approved
-        if (isRetryableError(errStatus, errMsg) && shouldCheckRelay(errStatus, API_BASE, hasSavedKey, errMsg)) {
+        const deviceOnline = typeof navigator === 'undefined' || navigator.onLine !== false;     // no relay lookups while the phone itself is offline
+        if (deviceOnline && isRetryableError(errStatus, errMsg) && shouldCheckRelay(errStatus, API_BASE, hasSavedKey, errMsg)) {
           const fresh = await relayAddressFor(savedKey);
           if (fresh && fresh !== API_BASE && isTrustedTunnel(fresh) && mayAutoReconnect()) {
-            try { localStorage.removeItem(STORAGE.TOKEN); } catch (_) {}
             if (saveApiBase(fresh)) {
               setConn('updating', 'Bot tunnel updated — reconnecting…');
+              // The old session belongs to the old tunnel: drop it everywhere (memory, localStorage, native Preferences)
+              // and sign in again with the saved key, so a stale token never reaches the new endpoint and causes a 401 logout.
+              state.session = null;
+              persistSessionToken(null);
+              try { await reauthWithSavedKey(savedKey); } catch (_) { /* the next refresh retries; a failed sign-in must not wipe the saved key */ }
               retryAttempt = 0;
               scheduleNextRefresh(500);
               return;

@@ -1,6 +1,6 @@
 {
   "name": "sultrix-mobile",
-  "version": "2.2.54",
+  "version": "2.2.55",
   "description": "Sultrix Native Mobile Application (Android & iOS) and Trading Companion",
   "main": "app.js",
   "scripts": {

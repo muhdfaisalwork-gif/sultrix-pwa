@@ -24,7 +24,7 @@
   };
   const POLL_MS = 12_000;        // home refresh
   const SLOW_POLL_MS = 45_000;   // agents / alerts
-  const BUILD = '2.2.54';
+  const BUILD = '2.2.55';
 
   // ── State ────────────────────────────────────────
   const state = {

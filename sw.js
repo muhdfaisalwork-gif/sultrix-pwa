@@ -7,7 +7,7 @@
  *   - charts / tv : stale-while-revalidate
  *   - icons / statics: cache-first
  */
-const VERSION = 'sultrix-pwa-v2.2.54c';
+const VERSION = 'sultrix-pwa-v2.2.55';
 const APP_SHELL = [
   '/',
   '/manifest.json',

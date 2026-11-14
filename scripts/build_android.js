@@ -12,12 +12,7 @@ const ANDROID_DIR = path.join(ROOT, 'android');
 const IS_WINDOWS = process.platform === 'win32';
 const GRADLE_CMD = IS_WINDOWS ? 'gradlew.bat' : './gradlew';
 
-// Detect local JDK 21 if JAVA_HOME is not set
-const DEFAULT_JDK21 = 'C:\\Users\\Lucifer\\AppData\\Local\\Programs\\jdk-21\\jdk-21.0.4+7';
-if (!process.env.JAVA_HOME && fs.existsSync(DEFAULT_JDK21)) {
-  process.env.JAVA_HOME = DEFAULT_JDK21;
-  process.env.PATH = path.join(DEFAULT_JDK21, 'bin') + path.delimiter + process.env.PATH;
-}
+// JDK 21 must come from JAVA_HOME or PATH (no machine-specific path is baked in).
 
 console.log('=== Sultrix Mobile: Android Build ===');
 

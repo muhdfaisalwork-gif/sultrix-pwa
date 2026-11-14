@@ -29,7 +29,7 @@ if (fs.existsSync(WWW)) {
 fs.mkdirSync(WWW, { recursive: true });
 
 // Files to copy
-const filesToCopy = ['app.js', 'styles.css', 'manifest.json', 'sw.js'];
+const filesToCopy = ['conn_helpers.js', 'app.js', 'styles.css', 'manifest.json', 'sw.js'];
 for (const file of filesToCopy) {
   const src = path.join(ROOT, file);
   if (fs.existsSync(src)) {
@@ -54,6 +54,7 @@ if (fs.existsSync(indexPath)) {
     .replace(/href="\/assets\//g, 'href="assets/')
     .replace(/src="\/assets\//g, 'src="assets/')
     .replace(/href="\/styles\.css"/g, 'href="styles.css"')
+    .replace(/src="\/conn_helpers\.js"/g, 'src="conn_helpers.js"')
     .replace(/src="\/app\.js"/g, 'src="app.js"');
   fs.writeFileSync(path.join(WWW, 'index.html'), indexContent, 'utf8');
   console.log('Copied and normalized: index.html');

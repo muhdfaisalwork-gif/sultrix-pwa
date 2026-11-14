@@ -72,7 +72,7 @@ jobs:
   build-ios:
     # Real release signing requires an Apple developer account and certificate and is not set up yet; this job produces unsigned artifacts.
     name: Build iOS (IPA & Archive)
-    runs-on: macos-14
+    runs-on: macos-latest
     # Independent of Android result: no needs, executes even if Android fails or is cancelled
     if: always()
     steps:

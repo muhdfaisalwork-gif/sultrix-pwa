@@ -166,3 +166,17 @@ test('formatConnectionStatus: status formatting and offline duration text', () =
   assert.equal(res30.isLive, false);
   assert.equal(res30.text, 'Offline since 30s ago — showing cached data');
 });
+
+test('expiredSessionPlan: an expired session never logs the user out while a key can renew it', () => {
+  const { expiredSessionPlan } = require('../conn_helpers.js');
+  // renewed silently
+  assert.equal(expiredSessionPlan({ hasCredentials: true, renewed: true, refusals: 0 }), 'renewed');
+  // one failed sign-in (slow tunnel, timeout, busy licence server) must retry, never log out (this was the daily re-login bug)
+  assert.equal(expiredSessionPlan({ hasCredentials: true, renewed: false, refusals: 0 }), 'retry');
+  assert.equal(expiredSessionPlan({ hasCredentials: true, renewed: false, refusals: 4 }), 'retry');
+  // the bot itself refused five times: show the login screen (the key stays saved and pre-filled)
+  assert.equal(expiredSessionPlan({ hasCredentials: true, renewed: false, refusals: 5 }), 'login');
+  // nothing to renew with: login
+  assert.equal(expiredSessionPlan({ hasCredentials: false, renewed: false, refusals: 0 }), 'login');
+  assert.equal(expiredSessionPlan(), 'login');
+});

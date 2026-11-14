@@ -24,7 +24,7 @@
   };
   const POLL_MS = 12_000;        // home refresh
   const SLOW_POLL_MS = 45_000;   // agents / alerts
-  const BUILD = '2.2.55';
+  const BUILD = '2.2.56';
 
   // ── State ────────────────────────────────────────
   const state = {
@@ -196,6 +196,12 @@
     return false;
   };
 
+  const expiredSessionPlan = (typeof window !== 'undefined' && window.expiredSessionPlan) || function (s) {
+    s = s || {};
+    if (!s.hasCredentials) return 'login';
+    if (s.renewed) return 'renewed';
+    return (Number(s.refusals) || 0) >= 5 ? 'login' : 'retry';
+  };
   const shouldCheckRelay = (typeof window !== 'undefined' && window.shouldCheckRelay) || function (errorStatus, currentUrl, hasSavedKey, message) {
     return Boolean(hasSavedKey && isRetryableError(errorStatus, message) && (!currentUrl || isTrustedTunnel(currentUrl)));
   };
@@ -713,8 +719,10 @@
         persistSavedLicenseKey(licenseKey);
         const fingerprint = await fingerprintLicense(licenseKey);
         try { localStorage.setItem(STORAGE.LICENSE_HASH, fingerprint); } catch (_) {}
+        try { localStorage.removeItem('sx.keylessSession'); } catch (_) {}
       } else {
         try { localStorage.removeItem(STORAGE.LICENSE_HASH); } catch (_) {}
+        try { localStorage.setItem('sx.keylessSession', '1'); } catch (_) {}      // remembered so an expired free session can renew itself on the home network
       }
       persistSessionToken(r.session_token);
       // Schedule push subscription (only for paid tiers)
@@ -787,7 +795,7 @@
     try { api('/api/pwa/session/logout', { method: 'POST', timeout: 5000 }); } catch (_) {}
     state.session = null;
     persistSessionToken(null);
-    try { localStorage.removeItem('sx.savedLicenseKey'); } catch (_) {}
+    try { localStorage.removeItem('sx.savedLicenseKey'); localStorage.removeItem('sx.keylessSession'); } catch (_) {}
     if (isNative && CapPlugins.Preferences) {
       try { CapPlugins.Preferences.remove({ key: 'sx.savedLicenseKey' }); } catch (_) {}
     }
@@ -810,12 +818,24 @@
   }
 
   // Re-authenticate against a newly discovered tunnel using the saved key without full reload
-  async function reauthWithSavedKey(savedKey) {
-    if (!savedKey) throw new Error('no_saved_key');
+  // Show the login screen WITHOUT forgetting the licence key: used for every automatic sign-out. Only the Log out button (logout()) wipes the key.
+  function softLogout() {
+    state.session = null;
+    persistSessionToken(null);
+    try {
+      const k = localStorage.getItem('sx.savedLicenseKey') || '';
+      const lf = document.getElementById('licenseKey');
+      if (lf && k && !lf.value) lf.value = k;
+    } catch (_) {}
+    showLogin();
+  }
+
+  async function reauthWithSavedKey(savedKey, keyless) {
+    if (!savedKey && !keyless) throw new Error('no_saved_key');
     const r = await api('/api/pwa/auth', {
       method: 'POST',
-      body: JSON.stringify({ license_key: savedKey }),
-      timeout: 10000,
+      body: JSON.stringify({ license_key: savedKey || '' }),
+      timeout: 15000,
     });
     state.session = r.session_token;
     state.plan = r.plan || r.tier || 'free';
@@ -824,7 +844,7 @@
     state.trialDaysLeft = r.trial_days_left;
     state.readOnly = !!r.read_only;
     persistSessionToken(r.session_token);
-    persistSavedLicenseKey(savedKey);
+    if (savedKey) persistSavedLicenseKey(savedKey);
     return r;
   }
 
@@ -1291,14 +1311,30 @@
       scheduleNextRefresh(POLL_MS);
     } catch (e) {
       if (e.status === 401) {
-        // An expired or foreign session is not a reason to forget the licence: sign in again once with the saved key before logging out.
-        let renewed = false;
-        if (Date.now() - (window.__lastReauthAt || 0) > 60000) {      // at most one silent sign-in per minute, so a server that keeps refusing cannot cause a loop
-          window.__lastReauthAt = Date.now();
-          try { const k = localStorage.getItem('sx.savedLicenseKey') || ''; if (k.length >= 6) { await reauthWithSavedKey(k); renewed = true; } } catch (_) {}
+        // An expired session (the bot keeps sessions in memory for 12 h and forgets them at every restart) is NOT a reason to sign the user out.
+        // 14 Nov 2026 CEO report: users had to enter the key again every day. The old code logged out and DELETED the saved key when one silent
+        // sign-in failed for any reason (slow tunnel, timeout, licence server busy) or when two 401s came within a minute.
+        // Now: sign in again with the saved key (or keyless on the same network), keep the key whatever happens, retry with backoff, and show the
+        // login screen (key pre-filled) only after several consecutive refusals from the server itself.
+        const k = (localStorage.getItem('sx.savedLicenseKey') || '').trim();
+        const hadKeylessSession = !k && localStorage.getItem('sx.keylessSession') === '1';
+        if (k.length >= 6 || hadKeylessSession) {
+          let renewed = false, refused = false;
+          if (Date.now() - (window.__lastReauthAt || 0) > 5000) {       // one silent sign-in at a time; 5 s apart so parallel requests do not stack up
+            window.__lastReauthAt = Date.now();
+            try { await reauthWithSavedKey(k, hadKeylessSession); renewed = true; window.__reauthRefusals = 0; }
+            catch (re) { refused = Boolean(re && re.status === 401); }
+          }
+          if (refused) window.__reauthRefusals = (window.__reauthRefusals || 0) + 1;
+          const plan = expiredSessionPlan({ hasCredentials: true, renewed, refusals: window.__reauthRefusals || 0 });
+          if (plan === 'renewed') { retryAttempt = 0; scheduleNextRefresh(500); return; }
+          if (plan === 'login') { softLogout(); return; }     // the bot itself said no five times: ask for the key again, but keep it pre-filled
+          setConn('offline', 'Reconnecting…');
+          retryAttempt++;
+          scheduleNextRefresh(computeRetryDelay(retryAttempt));
+          return;
         }
-        if (renewed) { retryAttempt = 0; scheduleNextRefresh(500); return; }
-        logout(); return;
+        softLogout(); return;       // no saved key and no keyless session: nothing to renew with
       }
       try {
         const savedKey = localStorage.getItem('sx.savedLicenseKey') || '';

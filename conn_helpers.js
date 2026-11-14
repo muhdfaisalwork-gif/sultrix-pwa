@@ -105,11 +105,28 @@
     return { kind: 'offline', text, isLive: false };
   }
 
+  /**
+   * What to do after the bot answered 401 (session expired or forgotten at a bot restart).
+   * 14 Nov 2026: the old rule logged the user out and deleted the saved key after ONE failed silent sign-in, so users had to enter the key every day.
+   * Now a user is only sent to the login screen (key kept and pre-filled) when there is nothing to renew with, or the bot itself refused repeatedly.
+   * @param {{hasCredentials: boolean, renewed: boolean, refusals: number}} s
+   * @returns {'renewed'|'retry'|'login'}
+   */
+  const MAX_SIGNIN_REFUSALS = 5;
+  function expiredSessionPlan(s) {
+    const st = s || {};
+    if (!st.hasCredentials) return 'login';
+    if (st.renewed) return 'renewed';
+    if ((Number(st.refusals) || 0) >= MAX_SIGNIN_REFUSALS) return 'login';
+    return 'retry';
+  }
+
   return {
     computeRetryDelay,
     isRetryableError,
     isTrustedTunnel,
     shouldCheckRelay,
     formatConnectionStatus,
+    expiredSessionPlan,
   };
 });
